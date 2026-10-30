@@ -1,0 +1,78 @@
+# Robot configuration for the container: ROS parameters of its nodes. Edit and restart:
+#   docker compose restart
+# (hardware settings such as the serial port are in ../.env)
+
+wheel_serial_bridge:
+  ros__parameters:
+    wheel_cmd_topic: "/wheel_cmd"          # wheel speed targets [left, right] rad/s -> ESP32
+    wheel_state_topic: "/wheel_vel"        # measured wheel speeds [left, right] rad/s <- ESP32
+    wheel_duty_topic: "/wheel_duty"        # motor duty [left, right] in [-1, 1] -> ESP32 "D" (policy, wheel_check)
+
+balance_bot_policy:
+  ros__parameters:
+    # set by the container from POLICY_NAME in ../.env: /policies/<POLICY_NAME>/policy.onnx (jetson/policies/)
+    policy_path: "/policies/smooth2/policy.onnx"
+
+    # topics
+    imu_topic: "/imu"                      # sensor_msgs/Imu (the real robot publishes /imu, frame_id "imu")
+    cmd_vel_topic: "/cmd_vel"              # geometry_msgs/Twist: linear.x [m/s], angular.z [rad/s]
+    wheel_state_topic: "/wheel_vel"        # std_msgs/Float32MultiArray [left, right] measured rad/s (from Arduino)
+    wheel_cmd_topic: "/wheel_cmd"          # std_msgs/Float32MultiArray [left, right] target rad/s (to Arduino)
+    wheel_duty_topic: "/wheel_duty"        # std_msgs/Float32MultiArray [left, right] duty in [-1, 1] (to Arduino)
+    enable_topic: "/balance_bot/enable"    # std_msgs/Bool
+
+    control_rate: 50.0                     # Hz, must match training (decimation 4 x 5 ms)
+
+    # IMU mounting: 3x3 rotation (row-major) from IMU axes to robot axes (x forward, y left, z up, ROS REP-103).
+    # Identity: the IMU's x points to the robot's front, y to its left, z up.
+    imu_to_body: [1.0, 0.0, 0.0,
+                  0.0, 1.0, 0.0,
+                  0.0, 0.0, 1.0]
+    use_imu_orientation: true              # use the IMU's own orientation if it publishes one, else gyro+accel filter
+    gravity_filter_alpha: 0.02
+
+    # Wheel topics are [left, right] seen from behind the robot. +1 = positive speed drives the robot forward
+    # on that wheel, -1 = the Arduino uses the opposite sign for that wheel.
+    wheel_signs: [1.0, 1.0]
+
+    # "speed": wheel speed targets for the ESP32's speed loop (/wheel_cmd -> "V"). "duty": motor duty directly
+    # (/wheel_duty -> "D", duty = action x action_scale / motor_max_rad_s). Must match the policy's training
+    # (HoverboardWheelActionCfg.control). Stopped / disabled always sends zero speed on /wheel_cmd.
+    output_mode: "speed"
+    motor_max_rad_s: 60.0                  # MOTOR_MAX_RAD_S in the firmware (duty mode only)
+    action_scale: 30.0                     # WHEEL_MAX_SPEED used in training
+    max_wheel_speed: 30.0                  # rad/s
+    max_lin_vel: 1.5                       # cmd_vel clipped to the trained command range
+    max_ang_vel: 2.0
+    max_lin_acc: 1.0                       # m/s^2, cmd_vel changes are ramped (smooth starts and stops)
+    max_ang_acc: 4.0                       # rad/s^2
+    cmd_vel_timeout: 1.0                   # s without cmd_vel -> ramp down and stand still
+
+    # drift correction: integral loop on wheel odometry that removes the policy's steady speed error
+    # (it crept backwards ~4 cm/s at zero command); 0 disables it
+    wheel_radius: 0.0825                   # m (6.5" hoverboard wheels)
+    drift_ki: 0.5                          # 1/s
+    drift_max_correction: 0.3              # m/s, largest offset added to the forward command
+    # same for turning, on the gyro's yaw rate: the two motors never match exactly, so with a gentle speed loop the
+    # robot slowly turns at zero command; 0 disables it
+    yaw_drift_ki: 1.0                      # 1/s
+    yaw_drift_max_correction: 0.5          # rad/s, largest offset added to the turn command
+    sensor_timeout: 0.1                    # s without IMU / wheel data -> zero wheel speed
+    # false: the robot only starts balancing when Circle is pressed on the PS4 controller (joystick container), or
+    #   ros2 topic pub --once /balance_bot/enable std_msgs/msg/Bool "{data: true}"
+    # (the container also starts on boot; a robot that drives off by itself on power-up is a hazard)
+    start_enabled: false
+
+# MODE=wheel_test in ../.env: cmd_vel straight to wheel speeds, no balancing (robot on a stand)
+wheel_teleop:
+  ros__parameters:
+    cmd_vel_topic: "/cmd_vel"
+    wheel_cmd_topic: "/wheel_cmd"
+    wheel_state_topic: "/wheel_vel"
+    wheel_radius: 0.0825       # m, same as balance_bot_policy
+    track_width: 0.18          # m, wheel center to wheel center: measure your robot
+    wheel_signs: [1.0, 1.0]    # same as balance_bot_policy
+    max_wheel_speed: 10.0      # rad/s (0.8 m/s): a gentle limit for testing, the firmware allows 30
+    max_wheel_acc: 30.0        # rad/s^2
+    cmd_vel_timeout: 0.5       # s without cmd_vel (R2 released) -> ramp to zero
+    log_period: 1.0            # s between "target / measured" log lines in docker compose logs, 0 = quiet

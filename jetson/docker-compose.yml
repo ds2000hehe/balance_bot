@@ -1,0 +1,72 @@
+# Balance bot on the real robot, two containers from one image:
+#   balance_bot  USB serial bridge to the wheel controller + the policy POLICY_NAME from policies/ (waits for the
+#                Circle button before balancing); MODE=wheel_test drives the wheels directly instead (no balancing)
+#   joystick     PS4 controller: sticks -> /cmd_vel while R2 is held (dead-man), Circle -> start balancing,
+#                Cross -> stop
+#
+#   cd jetson
+#   docker compose up -d --build     # build and start (both start again after every reboot)
+#   POLICY_NAME=scratch docker compose up -d       # switch policy (or set it in .env)
+#   docker compose run --rm balance_bot policies   # list the policy library
+#   docker compose logs -f           # watch
+#   docker compose down              # stop (the Arduino switches the motors off 200 ms after the last command)
+#
+# Configuration: .env (serial port, mode, policy, ROS domain), config/robot.yaml (topics, IMU mounting, policy file, ...) and
+# config/joystick.yaml (controller buttons, sticks, speeds).
+
+x-ros: &ros
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: balance_bot_robot:latest
+  restart: unless-stopped
+  # ROS 2 discovery needs the host network; the IMU driver can run on the host or in another container
+  network_mode: host
+  ipc: host
+  stop_signal: SIGINT
+  stop_grace_period: 10s
+
+x-ros-env: &ros-env
+  ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
+  RMW_IMPLEMENTATION: ${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}
+  FASTRTPS_DEFAULT_PROFILES_FILE: /fastdds_udp.xml
+  PYTHONUNBUFFERED: "1"
+
+services:
+  balance_bot:
+    <<: *ros
+    container_name: balance_bot
+    command: robot
+    environment:
+      <<: *ros-env
+      SERIAL_PORT: ${SERIAL_PORT}
+      BAUD: ${BAUD:-115200}
+      MODE: ${MODE:-balance}
+      POLICY_NAME: ${POLICY_NAME:-smooth2}
+    volumes:
+      - ./config:/config:ro
+      - ./policies:/policies:ro
+      # all of /dev so the Arduino can be unplugged and replugged (a fixed "devices:" entry would go stale),
+      # and /dev/serial/by-id names work
+      - /dev:/dev
+    # allow USB serial devices only: ttyUSB* (CP210x / CH340, major 188) and ttyACM* (native USB, major 166)
+    device_cgroup_rules:
+      - "c 188:* rmw"
+      - "c 166:* rmw"
+
+  joystick:
+    <<: *ros
+    container_name: balance_bot_joystick
+    command: joystick
+    environment:
+      <<: *ros-env
+      # find the gamepad by scanning /dev/input (watched with inotify, so a controller that connects after boot is
+      # picked up); there is no udev daemon in the container
+      SDL_JOYSTICK_DISABLE_UDEV: "1"
+    volumes:
+      - ./config:/config:ro
+      # the whole directory (not single devices) so the controller can connect and disconnect at any time
+      - /dev/input:/dev/input
+    # allow input devices only (/dev/input/js*, event*: major 13)
+    device_cgroup_rules:
+      - "c 13:* rmw"

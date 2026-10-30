@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>balance_bot_policy</name>
+  <version>0.1.0</version>
+  <description>Runs the Isaac Lab trained balance bot policy on the real robot: IMU + wheel speeds + cmd_vel in, wheel velocity targets out.</description>
+  <maintainer email="davidssweetman@gmail.com">david</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-serial</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <!-- PS4 controller (joystick.launch.py) -->
+  <exec_depend>joy</exec_depend>
+  <exec_depend>teleop_twist_joy</exec_depend>
+  <!-- robot.launch.py mode:=wheel_test -->
+  <exec_depend>balance_bot_wheel_teleop</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

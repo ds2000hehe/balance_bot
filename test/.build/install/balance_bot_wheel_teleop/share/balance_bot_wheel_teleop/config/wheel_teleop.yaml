@@ -1,0 +1,13 @@
+# Wheel test (no balancing): cmd_vel -> wheel speed targets. Keep wheel_radius / wheel_signs equal to the policy config.
+wheel_teleop:
+  ros__parameters:
+    cmd_vel_topic: "/cmd_vel"
+    wheel_cmd_topic: "/wheel_cmd"
+    wheel_state_topic: "/wheel_vel"
+    wheel_radius: 0.0825       # m (6.5" hoverboard wheels)
+    track_width: 0.18          # m, wheel center to wheel center: measure your robot
+    wheel_signs: [1.0, 1.0]    # same as policy_node
+    max_wheel_speed: 10.0      # rad/s (0.8 m/s): a gentle limit for testing, the firmware allows 30
+    max_wheel_acc: 30.0        # rad/s^2
+    cmd_vel_timeout: 0.5       # s without cmd_vel (dead-man released) -> ramp to zero
+    log_period: 1.0            # s between "target / measured" log lines, 0 = quiet

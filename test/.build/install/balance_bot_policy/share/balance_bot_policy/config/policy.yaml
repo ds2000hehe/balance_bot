@@ -1,0 +1,53 @@
+balance_bot_policy:
+  ros__parameters:
+    # exported by Isaac Lab's play.py (logs/rsl_rl/<experiment>/<run>/exported/policy.pt or policy.onnx)
+    # trained with 0.0825 m hoverboard wheels and the ESP32 + BLDC driver + hoverboard motor model (mdp/hoverboard.py)
+    # previous (ideal velocity-controlled motors, 0.078 m wheels): .../2026-10-12_22-06-01_fast/exported/policy.pt
+    policy_path: "/home/david/RL/balance_bot/jetson/policies/smooth2/policy.pt"
+
+    # topics
+    imu_topic: "/imu"                      # sensor_msgs/Imu (the real robot publishes /imu, frame_id "imu")
+    cmd_vel_topic: "/cmd_vel"              # geometry_msgs/Twist: linear.x [m/s], angular.z [rad/s]
+    wheel_state_topic: "/wheel_vel"        # std_msgs/Float32MultiArray [left, right] measured rad/s (from Arduino)
+    wheel_cmd_topic: "/wheel_cmd"          # std_msgs/Float32MultiArray [left, right] target rad/s (to Arduino)
+    wheel_duty_topic: "/wheel_duty"        # std_msgs/Float32MultiArray [left, right] duty in [-1, 1] (to Arduino)
+    enable_topic: "/balance_bot/enable"    # std_msgs/Bool
+
+    control_rate: 50.0                     # Hz, must match training (decimation 4 x 5 ms)
+
+    # IMU mounting: 3x3 rotation (row-major) from IMU axes to robot axes (x forward, y left, z up, ROS REP-103).
+    # Identity: the IMU's x points to the robot's front, y to its left, z up.
+    imu_to_body: [1.0, 0.0, 0.0,
+                  0.0, 1.0, 0.0,
+                  0.0, 0.0, 1.0]
+    use_imu_orientation: true              # use the IMU's own orientation if it publishes one, else gyro+accel filter
+    gravity_filter_alpha: 0.02
+
+    # Wheel topics are [left, right] seen from behind the robot. +1 = positive speed drives the robot forward
+    # on that wheel, -1 = the Arduino uses the opposite sign for that wheel.
+    wheel_signs: [1.0, 1.0]
+
+    # "speed": wheel speed targets for the ESP32's speed loop (/wheel_cmd -> "V"). "duty": motor duty directly
+    # (/wheel_duty -> "D", duty = action x action_scale / motor_max_rad_s). Must match the policy's training
+    # (HoverboardWheelActionCfg.control). Stopped / disabled always sends zero speed on /wheel_cmd.
+    output_mode: "speed"
+    motor_max_rad_s: 60.0                  # MOTOR_MAX_RAD_S in the firmware (duty mode only)
+    action_scale: 30.0                     # WHEEL_MAX_SPEED used in training
+    max_wheel_speed: 30.0                  # rad/s
+    max_lin_vel: 1.5                       # cmd_vel clipped to the trained command range
+    max_ang_vel: 2.0
+    max_lin_acc: 1.0                       # m/s^2, cmd_vel changes are ramped (smooth starts and stops)
+    max_ang_acc: 4.0                       # rad/s^2
+    cmd_vel_timeout: 1.0                   # s without cmd_vel -> ramp down and stand still
+
+    # drift correction: integral loop on wheel odometry that removes the policy's steady speed error
+    # (it crept backwards ~4 cm/s at zero command); 0 disables it
+    wheel_radius: 0.0825                   # m (6.5" hoverboard wheels)
+    drift_ki: 0.5                          # 1/s
+    drift_max_correction: 0.3              # m/s, largest offset added to the forward command
+    # same for turning, on the gyro's yaw rate: the two motors never match exactly, so with a gentle speed loop the
+    # robot slowly turns at zero command; 0 disables it
+    yaw_drift_ki: 1.0                      # 1/s
+    yaw_drift_max_correction: 0.5          # rad/s, largest offset added to the turn command
+    sensor_timeout: 0.1                    # s without IMU / wheel data -> zero wheel speed
+    start_enabled: true

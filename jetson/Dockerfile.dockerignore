@@ -1,0 +1,7 @@
+# build context is this folder (jetson/): only send what the image needs
+*
+!ros2_ws/src/balance_bot_policy
+!ros2_ws/src/balance_bot_wheel_teleop
+!entrypoint.sh
+!fastdds_udp.xml
+**/__pycache__
