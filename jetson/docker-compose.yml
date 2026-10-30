@@ -18,6 +18,8 @@ x-ros: &ros
   build:
     context: .
     dockerfile: Dockerfile
+    # build on the host network: Docker's own DNS often fails on Jetsons ("Temporary failure resolving ...")
+    network: host
   image: balance_bot_robot:latest
   restart: unless-stopped
   # ROS 2 discovery needs the host network; the IMU driver can run on the host or in another container
