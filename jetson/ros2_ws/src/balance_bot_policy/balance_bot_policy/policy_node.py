@@ -68,6 +68,9 @@ class PolicyNode(Node):
         self.use_imu_orientation = p("use_imu_orientation", True).value
         self.gravity_filter_alpha = p("gravity_filter_alpha", 0.02).value
         self.wheel_signs = np.array(p("wheel_signs", [1.0, 1.0]).value)
+        # while enabled, log what the policy sees and commands every debug_period seconds (0 = off)
+        self.debug_period = p("debug_period", 1.0).value
+        self.last_debug = 0.0
         self.action_scale = p("action_scale", 30.0).value
         self.max_wheel_speed = p("max_wheel_speed", 30.0).value
         self.max_lin_vel = p("max_lin_vel", 1.5).value
@@ -216,6 +219,19 @@ class PolicyNode(Node):
         )
         action = self.policy(obs)
         self.last_action = action
+        if self.debug_period > 0.0 and now - self.last_debug >= self.debug_period:
+            self.last_debug = now
+            g_body = self.imu_to_body @ self.gravity_imu  # unit vector pointing down, robot axes
+            gyro_body = self.imu_to_body @ self.ang_vel_imu
+            target = self._sim_to_topic(np.clip(action * self.action_scale, -self.max_wheel_speed, self.max_wheel_speed))
+            self.get_logger().info(
+                f"lean fwd {np.degrees(np.arcsin(np.clip(g_body[0], -1, 1))):+5.1f} deg, "
+                f"left {np.degrees(np.arcsin(np.clip(g_body[1], -1, 1))):+5.1f} deg | "
+                f"gyro roll/pitch/yaw {gyro_body[0]:+5.2f} {gyro_body[1]:+5.2f} {gyro_body[2]:+5.2f} rad/s | "
+                f"cmd {cmd_forward:+.2f} m/s {cmd_yaw:+.2f} rad/s | "
+                f"wheels meas [{self.wheel_vel[0]:+6.2f} {self.wheel_vel[1]:+6.2f}] "
+                f"-> target [{target[0]:+6.2f} {target[1]:+6.2f}] rad/s (left, right)"
+            )
         if self.output_mode == "duty":
             duty_sim = np.clip(action * self.action_scale / self.motor_max_rad_s, -1.0, 1.0)
             self.duty_pub.publish(Float32MultiArray(data=[float(v) for v in self._sim_to_topic(duty_sim)]))

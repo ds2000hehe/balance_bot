@@ -28,7 +28,8 @@ balance_bot_policy:
     imu_to_body: [1.0, 0.0, 0.0,
                   0.0, 1.0, 0.0,
                   0.0, 0.0, 1.0]
-    use_imu_orientation: true              # use the IMU's own orientation if it publishes one, else gyro+accel filter
+    use_imu_orientation: false             # true: use the IMU's own orientation field (only if it really changes when
+                                           # the robot tilts: ros2 topic echo /imu --field orientation); false: gyro+accel filter
     gravity_filter_alpha: 0.02
 
     # Wheel topics are [left, right] seen from behind the robot. +1 = positive speed drives the robot forward

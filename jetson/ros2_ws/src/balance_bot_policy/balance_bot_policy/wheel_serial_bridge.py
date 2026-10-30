@@ -7,8 +7,11 @@ Subscribes:
 Publishes:
     wheel_state_topic  std_msgs/Float32MultiArray   measured wheel speeds [left, right] rad/s <- "W <l> <r>"
 
-Lines starting with '#' from the ESP32 are logged. The serial port is reopened if the USB cable is unplugged.
-On shutdown the wheels are told to stop ("S").
+Lines starting with '#' from the wheel controller are logged. The serial port is reopened if the USB cable is
+unplugged. On shutdown the wheels are told to stop ("S").
+
+Opening the port resets most Arduinos, and an ATmega2560 (Mega) bootloader hangs if serial data arrives while it boots:
+nothing is sent for boot_wait seconds after opening (the commands are dropped, the wheels are stopped anyway).
 """
 
 import threading
@@ -30,7 +33,11 @@ class WheelSerialBridge(Node):
         wheel_cmd_topic = p("wheel_cmd_topic", "/wheel_cmd").value
         wheel_state_topic = p("wheel_state_topic", "/wheel_vel").value
         wheel_duty_topic = p("wheel_duty_topic", "/wheel_duty").value
+        self.boot_wait = p("boot_wait", 2.5).value
 
+        self.send_after = 0.0
+        self.last_report = 0.0
+        self.reporting = False
         self.serial = None
         self.write_lock = threading.Lock()
         self.running = True
@@ -55,7 +62,7 @@ class WheelSerialBridge(Node):
 
     def _write(self, line: str):
         with self.write_lock:
-            if self.serial is None:
+            if self.serial is None or time.monotonic() < self.send_after:
                 return
             try:
                 self.serial.write(line.encode())
@@ -89,7 +96,10 @@ class WheelSerialBridge(Node):
                     s = self._open()
                     with self.write_lock:
                         self.serial = s
-                    self.get_logger().info(f"opened {self.port}")
+                        self.send_after = time.monotonic() + self.boot_wait
+                    self.last_report = time.monotonic()
+                    self.reporting = False
+                    self.get_logger().info(f"opened {self.port}, waiting {self.boot_wait:.1f} s for the controller to boot")
                 except (serial.SerialException, OSError) as e:
                     self.get_logger().warn(f"cannot open {self.port}: {e}", throttle_duration_sec=5.0)
                     time.sleep(1.0)
@@ -103,14 +113,31 @@ class WheelSerialBridge(Node):
                 time.sleep(0.5)
                 continue
             line = raw.decode(errors="replace").strip()
+            now = time.monotonic()
             if line.startswith("W "):
                 try:
                     left, right = (float(v) for v in line[2:].split())
                 except ValueError:
                     continue  # partial line (e.g. right after connecting)
-                self.wheel_pub.publish(Float32MultiArray(data=[left, right]))
+                try:
+                    self.wheel_pub.publish(Float32MultiArray(data=[left, right]))
+                except Exception:  # shutting down
+                    break
+                self.last_report = now
+                if not self.reporting:
+                    self.reporting = True
+                    self.get_logger().info("wheel controller is sending speed reports")
             elif line.startswith("#"):
-                self.get_logger().info(f"esp32: {line[1:].strip()}")
+                self.get_logger().info(f"controller: {line[1:].strip()}")
+            elif line:
+                self.get_logger().warn(f"unexpected line from the controller: {line[:60]!r}", throttle_duration_sec=5.0)
+            if now - self.last_report > self.boot_wait + 1.0:
+                self.reporting = False
+                self.get_logger().warn(
+                    f"no speed reports ('W ...') from {self.port} for {now - self.last_report:.0f} s: is "
+                    "balance_bot_atmega flashed? baud right? another program on the port?",
+                    throttle_duration_sec=5.0,
+                )
 
     def shutdown(self):
         self._write("S\n")
