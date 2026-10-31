@@ -22,7 +22,7 @@ import sys
 from isaaclab.app import AppLauncher
 
 # local imports
-import balance_bot.balance_bot.training.scripts.rsl_rl.cli_args as cli_args  # isort: skip
+import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Evaluate a balance bot checkpoint.")

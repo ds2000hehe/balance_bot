@@ -30,7 +30,7 @@ balance_bot_policy:
                   0.0, 0.0, 1.0]
     use_imu_orientation: false             # true: use the IMU's own orientation field (only if it really changes when
                                            # the robot tilts: ros2 topic echo /imu --field orientation); false: gyro+accel filter
-    gravity_filter_alpha: 0.02
+    gravity_filter_tau: 0.5                # s, accelerometer time constant of the tilt filter (= training FilteredGravity tau)
 
     # Wheel topics are [left, right] seen from behind the robot. +1 = positive speed drives the robot forward
     # on that wheel, -1 = the Arduino uses the opposite sign for that wheel.
@@ -40,7 +40,7 @@ balance_bot_policy:
     # (/wheel_duty -> "D", duty = action x action_scale / motor_max_rad_s). Must match the policy's training
     # (HoverboardWheelActionCfg.control). Stopped / disabled always sends zero speed on /wheel_cmd.
     output_mode: "speed"
-    motor_max_rad_s: 60.0                  # MOTOR_MAX_RAD_S in the firmware (duty mode only)
+    motor_max_rad_s: 68.0                  # MOTOR_MAX_RAD_S in the firmware (duty mode only)
     action_scale: 30.0                     # WHEEL_MAX_SPEED used in training
     max_wheel_speed: 30.0                  # rad/s
     max_lin_vel: 1.5                       # cmd_vel clipped to the trained command range
@@ -59,6 +59,11 @@ balance_bot_policy:
     yaw_drift_ki: 1.0                      # 1/s
     yaw_drift_max_correction: 0.5          # rad/s, largest offset added to the turn command
     sensor_timeout: 0.1                    # s without IMU / wheel data -> zero wheel speed
+    # tilt cut-off: beyond max_tilt_deg the motors switch off, wheels coast (training ends episodes at 30 deg). Resumes after
+    # being held within resume_tilt_deg for resume_hold_s; resume_tilt_deg 0 = only by re-enabling (Circle)
+    max_tilt_deg: 45.0
+    resume_tilt_deg: 5.0
+    resume_hold_s: 0.5
     # false: the robot only starts balancing when Circle is pressed on the PS4 controller (joystick container), or
     #   ros2 topic pub --once /balance_bot/enable std_msgs/msg/Bool "{data: true}"
     # (the container also starts on boot; a robot that drives off by itself on power-up is a hazard)

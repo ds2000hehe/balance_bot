@@ -11,7 +11,7 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 @configclass
 class BalanceBotPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 1500
+    max_iterations = 2000
     save_interval = 100
     experiment_name = "balance_bot"
     # actor sees only real-robot sensors, critic additionally gets privileged sim state

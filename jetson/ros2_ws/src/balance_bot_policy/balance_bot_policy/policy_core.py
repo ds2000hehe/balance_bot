@@ -41,11 +41,12 @@ class GravityEstimator:
     """Gravity direction in the IMU frame from gyro + accelerometer (complementary filter).
 
     The gyro propagates the estimate between samples; the accelerometer (which measures -gravity at rest) slowly
-    pulls it back so it does not drift. ``alpha`` is the accelerometer weight per sample.
+    pulls it back so it does not drift, with time constant ``tau`` seconds (the same for any IMU rate). The training
+    simulates exactly this filter (FilteredGravity in the Isaac Lab task): keep ``tau`` equal to it.
     """
 
-    def __init__(self, alpha: float = 0.02):
-        self.alpha = alpha
+    def __init__(self, tau: float = 0.5):
+        self.tau = tau
         self.g = None
 
     def update(self, gyro: np.ndarray, accel: np.ndarray, dt: float) -> np.ndarray:
@@ -58,7 +59,8 @@ class GravityEstimator:
         g = self.g - dt * np.cross(gyro, self.g)
         # trust the accelerometer less while it measures more than gravity (driving, bumps)
         if g_acc is not None and abs(norm - 9.81) < 3.0:
-            g = (1.0 - self.alpha) * g + self.alpha * g_acc
+            alpha = min(1.0, dt / self.tau)
+            g = (1.0 - alpha) * g + alpha * g_acc
         self.g = g / np.linalg.norm(g)
         return self.g
 

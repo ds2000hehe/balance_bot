@@ -66,8 +66,17 @@ class PolicyNode(Node):
         self.imu_to_body = np.array(p("imu_to_body", np.eye(3).flatten().tolist()).value).reshape(3, 3)
         self.imu_to_policy = BODY_TO_POLICY @ self.imu_to_body
         self.use_imu_orientation = p("use_imu_orientation", True).value
-        self.gravity_filter_alpha = p("gravity_filter_alpha", 0.02).value
+        self.gravity_filter_tau = p("gravity_filter_tau", 0.5).value
         self.wheel_signs = np.array(p("wheel_signs", [1.0, 1.0]).value)
+        # tilt cut-off: beyond max_tilt_deg the motors are switched off (zero duty, the wheels coast). The training ends
+        # episodes at 30 deg, so between 30 deg and the cut-off the policy is outside what it learned. It resumes after
+        # being held within resume_tilt_deg for resume_hold_s
+        # (resume_tilt_deg 0: only after the enable topic / Circle again)
+        self.max_tilt_deg = p("max_tilt_deg", 45.0).value
+        self.resume_tilt_deg = p("resume_tilt_deg", 5.0).value
+        self.resume_hold_s = p("resume_hold_s", 0.5).value
+        self.tripped = False
+        self.upright_since = None
         # while enabled, log what the policy sees and commands every debug_period seconds (0 = off)
         self.debug_period = p("debug_period", 1.0).value
         self.last_debug = 0.0
@@ -89,7 +98,7 @@ class PolicyNode(Node):
         self.get_logger().info(f"Loaded policy from {self.policy_path}")
 
         # -- state
-        self.gravity = GravityEstimator(self.gravity_filter_alpha)
+        self.gravity = GravityEstimator(self.gravity_filter_tau)
         self.ang_vel_imu = None
         self.gravity_imu = None
         self.last_imu_stamp = None
@@ -151,11 +160,37 @@ class PolicyNode(Node):
         if msg.data != self.enabled:
             self.get_logger().info("policy enabled" if msg.data else "policy disabled")
         self.enabled = msg.data
-        if not self.enabled:
-            self.last_action[:] = 0.0
-            self.cmd_smoother.reset()
-            self.drift.reset()
-            self.yaw_drift.reset()
+        self.tripped = False
+        self._reset_state()
+
+    def _reset_state(self):
+        self.last_action[:] = 0.0
+        self.cmd_smoother.reset()
+        self.drift.reset()
+        self.yaw_drift.reset()
+
+    def _tilt_cutoff(self, gravity_policy: np.ndarray, now: float) -> bool:
+        """True while the wheels must stay stopped because the robot tilted beyond max_tilt_deg."""
+        tilt = float(np.degrees(np.arccos(np.clip(-gravity_policy[2], -1.0, 1.0))))
+        if not self.tripped:
+            if tilt > self.max_tilt_deg:
+                self.tripped = True
+                self.upright_since = None
+                self.get_logger().warn(
+                    f"tilt {tilt:.0f} deg > {self.max_tilt_deg:.0f} deg: motors off"
+                    + (" (hold it upright to resume)" if self.resume_tilt_deg > 0 else " (re-enable to resume)")
+                )
+            return self.tripped
+        if self.resume_tilt_deg > 0 and tilt < self.resume_tilt_deg:
+            if self.upright_since is None:
+                self.upright_since = now
+            elif now - self.upright_since >= self.resume_hold_s:
+                self.tripped = False
+                self._reset_state()
+                self.get_logger().info("upright again: balancing resumed")
+        else:
+            self.upright_since = None
+        return self.tripped
 
     # -- wheel conventions
 
@@ -187,10 +222,14 @@ class PolicyNode(Node):
     def _publish(self, wheel_cmd: np.ndarray):
         self.wheel_pub.publish(Float32MultiArray(data=[float(v) for v in wheel_cmd]))
 
+    def _motors_off(self):
+        """Zero motor duty: no throttle at all, the wheels coast (a zero speed target would still brake / correct)."""
+        self.duty_pub.publish(Float32MultiArray(data=[0.0, 0.0]))
+
     def _step(self):
         now = time.monotonic()
         if not self.enabled:
-            self._publish(np.zeros(2))
+            self._motors_off()
             return
         if self.ang_vel_imu is None or now - self.imu_time > self.sensor_timeout:
             self.get_logger().warn("no recent IMU data, commanding zero wheel speed", throttle_duration_sec=1.0)
@@ -204,6 +243,9 @@ class PolicyNode(Node):
         target = self.cmd if now - self.cmd_time < self.cmd_timeout else (0.0, 0.0)
         cmd_forward, cmd_yaw = self.cmd_smoother.update(target, 1.0 / self.rate)
         gravity_policy = self.imu_to_policy @ self.gravity_imu
+        if self._tilt_cutoff(gravity_policy, now):
+            self._motors_off()
+            return
         upright = gravity_policy[2] < -0.9  # tilted less than ~25 deg
         cmd_forward = self.drift.update(cmd_forward, self._forward_speed(), upright, 1.0 / self.rate)
         yaw_rate = float((self.imu_to_body @ self.ang_vel_imu)[2])

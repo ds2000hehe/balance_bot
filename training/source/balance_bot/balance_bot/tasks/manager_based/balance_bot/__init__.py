@@ -5,7 +5,7 @@
 
 import gymnasium as gym
 
-from .........training.source.balance_bot.balance_bot.tasks.manager_based.balance_bot import agents
+from . import agents
 
 ##
 # Register Gym environments.

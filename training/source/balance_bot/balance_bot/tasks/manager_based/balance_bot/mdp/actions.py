@@ -123,7 +123,7 @@ class HoverboardWheelAction(DelayedJointVelocityAction):
     def drive_wheels_open_loop(self, duty: torch.Tensor):
         """Run the drive model for one physics step with a raw duty (the firmware's "D" test command)."""
         omega = self._update_sensors()
-        self._asset.set_joint_effort_target(self.drive.open_loop_torque(duty, omega), joint_ids=self._joint_ids)
+        self._asset.set_joint_effort_target(self.drive.open_loop_torque(duty, omega, self._physics_dt), joint_ids=self._joint_ids)
 
     def apply_actions(self):
         target = self._delayed_target()

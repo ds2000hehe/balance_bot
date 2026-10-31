@@ -3,17 +3,23 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Model of the real wheel drive: ESP32 firmware + hall-sensored BLDC driver + hoverboard hub motor.
+"""Model of the real wheel drive: ATmega firmware + ZS-X11H BLDC driver + hoverboard hub motor.
 
-The policy's wheel speed targets go to the wheel controller (arduino/balance_bot_atmega), which closes a PI speed loop on a
-speed estimate from the motor's hall sensors and drives a BLDC driver board with PWM + DIR only (BRAKE and STOP are
-not used: the driver changes direction and speed quickly by itself). This module reproduces that chain per physics step so the policy trains against the real behaviour:
+The policy's wheel speed targets go to the wheel controller (arduino/balance_bot_atmega), which closes a PI speed loop
+on a speed estimate from the driver's speed pulse output (or the motor's hall sensors) and drives the ZS-X11H with
+PWM throttle + DIR. This module reproduces that chain per physics step so the policy trains against the real
+behaviour:
 
-* **Speed estimate**: 90 hall counts per wheel turn (15 pole pairs x 6 states) with hall placement errors, speed
-  from the time between hall edges, bounded between edges and zero after ``standstill_s`` without an edge. This is
+* **Speed estimate**: 90 counts per wheel turn (15 pole pairs x 6 states) with edge placement errors, speed from the
+  time between edges, bounded between edges and zero after ``standstill_s`` without an edge. With
+  ``feedback="speed_pulse"`` (the robot's wiring) the pulses carry no direction: each one counts in the direction DIR
+  currently commands, so a wheel still rolling the other way after a reversal reads with the wrong sign. This is
   also what the policy observes as wheel speed, like on the robot.
 * **Firmware speed loop** (same constants as the sketch): ``duty = target / max_rad_s + kp * e + ki * integral(e)``,
   minimum duty kick, anti-windup.
+* **Firmware output protection**: the throttle rises by at most ``duty_slew_per_s``; DIR only changes with the
+  throttle at zero, the measured speed below ``reverse_max_rad_s`` and ``dir_min_hold_s`` after the last change
+  (the wheel coasts while a reversal waits); the speed loop does not integrate while the output is held back.
 * **Driver + motor**: the driver applies ``duty x battery voltage`` (sign = DIR) to the motor and drives current both
   ways, so it speeds a wheel up and slows it down: current ``(duty * V - ke * omega) / R``, limited to the driver's
   current limit. Duties in the dead zone switch the output off (the wheel coasts).
@@ -35,23 +41,31 @@ from isaaclab.utils import configclass
 class HoverboardDriveCfg:
     """Parameters of the wheel drive. Ranges are sampled uniformly per environment at reset."""
 
-    # -- hall sensors
+    # -- speed sensing
+    feedback: str = "speed_pulse"
+    """"speed_pulse": the driver's SC output, no direction (sign = commanded DIR). "halls": direction-aware."""
     counts_per_rev: int = 90
-    """Hall counts per wheel turn: 6 x pole pairs (hoverboard motors: 15 pole pairs)."""
+    """Counts per wheel turn: 6 x pole pairs (hoverboard motors: 15 pole pairs). Measured on the robot: 90."""
     hall_error: float = 0.08
-    """Max placement error of each hall edge, as a fraction of one count."""
+    """Max placement error of each edge, as a fraction of one count."""
 
     # -- firmware (keep equal to arduino/balance_bot_atmega/balance_bot_atmega.ino)
     kp: float = 0.01
     ki: float = 0.2
-    max_rad_s: float = 60.0
-    """MOTOR_MAX_RAD_S: feed-forward scale of the speed loop."""
+    max_rad_s: float = 68.0
+    """MOTOR_MAX_RAD_S: feed-forward scale of the speed loop (measured: 69.8 / 66.7 rad/s)."""
     min_duty: float = 0.0
     """MIN_DUTY: kick added in the target's direction (0 = let the integral overcome the dead zone)."""
     standstill_s: float = 0.1
     max_measured_rad_s: float = 100.0
     """Speed estimates beyond this are clipped (two hall edges microseconds apart would give absurd speeds)."""
     max_target_rad_s: float = 30.0
+    duty_slew_per_s: float = 4.0
+    """DUTY_SLEW_PER_S: largest throttle increase per second (decreases are not limited)."""
+    reverse_max_rad_s: float = 3.0
+    """REVERSE_MAX_RAD_S: DIR only changes while the measured speed is below this."""
+    dir_min_hold_s: float = 0.03
+    """DIR_MIN_HOLD_MS: minimum time between two DIR changes."""
 
     # -- driver + motor
     battery_voltage_range: tuple[float, float] = (33.0, 41.0)
@@ -85,8 +99,13 @@ class HoverboardDrive:
         self.prev_count = torch.zeros(shape, dtype=torch.long, device=device)
         self.prev_edge_t = zeros()
         self.last_dir = torch.zeros(shape, dtype=torch.long, device=device)  # direction of the last counted edge(s)
+        self.meas_count = torch.zeros(shape, dtype=torch.long, device=device)  # the firmware's (signed) count
         self.velocity = zeros()  # firmware speed estimate [rad/s]
         self.integral = zeros()
+        # firmware output stage
+        self.dir_sign = torch.ones(shape, device=device)  # direction DIR selects: +1 / -1
+        self.dir_change_t = zeros()
+        self.applied_duty = zeros()
         self.initialized = torch.zeros(num_envs, dtype=torch.bool, device=device)
         # randomized parameters
         self.edge_offset = torch.zeros(num_envs, num_wheels, 6, device=device)  # hall edge position within a count
@@ -112,6 +131,9 @@ class HoverboardDrive:
         self.edge_offset[env_ids] = 0.5 + self._uniform((-c.hall_error, c.hall_error), n, self.edge_offset)
         self.integral[env_ids] = 0.0
         self.velocity[env_ids] = 0.0
+        self.dir_sign[env_ids] = 1.0
+        self.dir_change_t[env_ids] = -1.0
+        self.applied_duty[env_ids] = 0.0
         self.last_dir[env_ids] = 0
         self.time[env_ids] = 0.0
         self.initialized[env_ids] = False
@@ -139,6 +161,7 @@ class HoverboardDrive:
             self.time -= shift
             self.last_edge_t -= shift
             self.prev_edge_t -= shift
+            self.dir_change_t -= shift
         t0 = self.time.clone()
         self.time += dt
         t1 = self.time
@@ -146,7 +169,8 @@ class HoverboardDrive:
         new_envs = ~self.initialized
         if new_envs.any():
             self.count[new_envs] = count[new_envs]
-            self.prev_count[new_envs] = count[new_envs]
+            self.meas_count[new_envs] = 0
+            self.prev_count[new_envs] = 0
             self.last_edge_t[new_envs] = t1.expand_as(self.last_edge_t)[new_envs]
             self.prev_edge_t[new_envs] = t1.expand_as(self.prev_edge_t)[new_envs]
             self.initialized[:] = True
@@ -158,11 +182,16 @@ class HoverboardDrive:
             frac = torch.clamp((boundary - x0) / torch.where((x1 - x0).abs() > 1e-9, x1 - x0, torch.ones_like(x1)), 0, 1)
             edge_t = t0 + frac * dt
             self.last_edge_t = torch.where(moved, edge_t, self.last_edge_t)
+            delta = count - self.count
+            if self.cfg.feedback == "speed_pulse":
+                # no direction on the pulse line: every edge counts in the direction DIR currently commands
+                delta = delta.abs() * self.dir_sign.long()
+            self.meas_count = self.meas_count + delta
             self.count = count
 
         # firmware: speed from the time between edges, bounded between edges
         rad_per_count = 2.0 * math.pi / self.cfg.counts_per_rev
-        new_counts = self.count - self.prev_count
+        new_counts = self.meas_count - self.prev_count
         has_new = new_counts != 0
         span = torch.clamp(self.last_edge_t - self.prev_edge_t, 1e-6, self.cfg.standstill_s)
         v_new = new_counts.float() * rad_per_count / span
@@ -178,7 +207,7 @@ class HoverboardDrive:
                              torch.clamp(self.velocity, -bound, bound))
         v_new = torch.clamp(v_new, -self.cfg.max_measured_rad_s, self.cfg.max_measured_rad_s)
         self.velocity = torch.where(has_new, v_new, v_hold)
-        self.prev_count = torch.where(has_new, self.count, self.prev_count)
+        self.prev_count = torch.where(has_new, self.meas_count, self.prev_count)
         self.prev_edge_t = torch.where(has_new, self.last_edge_t, self.prev_edge_t)
 
     # -- firmware speed loop + driver + motor
@@ -191,15 +220,39 @@ class HoverboardDrive:
         duty = target / c.max_rad_s + c.kp * error + c.ki * self.integral
         duty = duty + torch.where(target.abs() > 0.2, torch.sign(target) * c.min_duty, torch.zeros_like(duty))
         duty = torch.clamp(duty, -1.0, 1.0)
-        # anti-windup: hold the integral while saturated in the direction of the error
+        # anti-windup: hold the integral while saturated in the direction of the error or held back by the
+        # output protection
         saturated = ((duty >= 1.0) & (error > 0)) | ((duty <= -1.0) & (error < 0))
-        self.integral = torch.where(saturated, self.integral, self.integral + error * dt)
-        return self.driver_torque(duty, omega)
+        applied, limited = self.output_stage(duty, dt)
+        self.integral = torch.where(saturated | limited, self.integral, self.integral + error * dt)
+        return self.driver_torque(applied, omega)
 
-    def open_loop_torque(self, duty: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
+    def open_loop_torque(self, duty: torch.Tensor, omega: torch.Tensor, dt: float) -> torch.Tensor:
         """Wheel torque for a raw duty (the firmware's "D" command; 0 = output off, the wheel coasts)."""
         self.integral.zero_()
-        return self.driver_torque(torch.clamp(duty, -1.0, 1.0), omega)
+        applied, _ = self.output_stage(torch.clamp(duty, -1.0, 1.0), dt)
+        return self.driver_torque(applied, omega)
+
+    def output_stage(self, duty: torch.Tensor, dt: float) -> tuple[torch.Tensor, torch.Tensor]:
+        """The firmware's output protection (driveMotor): returns the duty actually applied and where it was held
+        back."""
+        c = self.cfg
+        t = self.time.expand_as(duty)
+        want = torch.where(duty > 0, torch.ones_like(duty), torch.where(duty < 0, -torch.ones_like(duty), self.dir_sign))
+        reverse = want != self.dir_sign
+        can_flip = (self.velocity.abs() < c.reverse_max_rad_s) & (t - self.dir_change_t >= c.dir_min_hold_s - 1e-6)
+        flip = reverse & can_flip
+        blocked = reverse & ~can_flip
+        self.dir_sign = torch.where(flip, want, self.dir_sign)
+        self.dir_change_t = torch.where(flip, t, self.dir_change_t)
+        current = torch.where(reverse, torch.zeros_like(duty), self.applied_duty.abs())
+        max_up = current + c.duty_slew_per_s * dt
+        magnitude = duty.abs()
+        slewed = magnitude > max_up
+        magnitude = torch.where(slewed, max_up, magnitude)
+        magnitude = torch.where(blocked, torch.zeros_like(magnitude), magnitude)
+        self.applied_duty = self.dir_sign * magnitude
+        return self.applied_duty, blocked | slewed
 
     def driver_torque(self, duty: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         """BLDC driver + motor: torque for ``duty`` at true wheel speed ``omega``."""

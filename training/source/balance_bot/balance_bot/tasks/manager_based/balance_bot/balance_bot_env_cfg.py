@@ -32,7 +32,7 @@ from . import mdp
 # Pre-defined configs
 ##
 
-from balance_bot.balance_bot.training.source.balance_bot.balance_bot.assets import BALANCE_BOT_CFG, WHEEL_MAX_SPEED  # isort:skip
+from balance_bot.assets import BALANCE_BOT_CFG, WHEEL_MAX_SPEED  # isort:skip
 
 
 ##
@@ -96,16 +96,17 @@ class CommandsCfg:
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    # wheel speed targets reach the ESP32 0-30 ms late (6 physics steps of 5 ms), like on the real robot (without
-    # the delay the policy is unstable on hardware), and are executed by a model of the ESP32 speed loop, the BLDC
-    # driver and the hoverboard motor (hall-sensor speed, driver dead zone, current limit)
+    # wheel speed targets reach the wheel controller 5-40 ms late (1-8 physics steps of 5 ms: IMU -> ROS -> policy
+    # -> USB serial), like on the real robot (without the delay the policy is unstable on hardware), and are executed
+    # by a model of the ATmega firmware (speed pulses without direction, PI speed loop, throttle ramp, safe
+    # reversals), the ZS-X11H driver and the hoverboard motor (dead zone, current limit)
     wheel_vel = mdp.HoverboardWheelActionCfg(
         asset_name="robot",
         joint_names=[".*_wheel_joint"],
         scale=WHEEL_MAX_SPEED,
         use_default_offset=False,
         clip={".*": (-WHEEL_MAX_SPEED, WHEEL_MAX_SPEED)},
-        delay_range=(0, 6),
+        delay_range=(1, 8),
         control="speed",
     )
 
@@ -119,7 +120,12 @@ class ObservationsCfg:
         """Observations for the policy. Only quantities the IMU and the ESP32 (hall sensors) measure on the robot."""
 
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.1, n_max=0.1), scale=0.25)
-        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.03, n_max=0.03))
+        # tilt as the robot's policy node estimates it: complementary filter on gyro + accelerometer (the real IMU's
+        # own orientation output is unusable), so accelerating reads as a false tilt, plus mounting error and bias
+        projected_gravity = ObsTerm(
+            func=mdp.FilteredGravity,
+            params={"tau": 0.5, "mount_error": 0.026, "gyro_bias": 0.01, "accel_noise": 0.2, "gyro_noise": 0.02},
+        )
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
         wheel_vel = ObsTerm(func=mdp.measured_wheel_vel, noise=Unoise(n_min=-0.2, n_max=0.2), scale=0.05)
         actions = ObsTerm(func=mdp.last_action)
@@ -226,9 +232,13 @@ class RewardsCfg:
     )
     # -- penalties
     terminated = RewTerm(func=mdp.is_terminated, weight=-20.0)
-    pitch_rate = RewTerm(func=mdp.pitch_rate_l2, weight=-0.15)
+    # -- smoothness: no rocking, no jumps in the wheel commands, no jerky wheel accelerations
+    pitch_rate = RewTerm(func=mdp.pitch_rate_l2, weight=-0.3)
     wheel_torques = RewTerm(func=mdp.joint_torques_l2, weight=-1.0e-3)
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.3)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.6)
+    wheel_acc = RewTerm(
+        func=mdp.joint_acc_l2, weight=-2.0e-6, params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*_wheel_joint")}
+    )
 
 
 @configclass
@@ -236,7 +246,8 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 0.8})
+    # same angle as the robot's tilt cut-off (policy node max_tilt_deg): beyond it the motors stop
+    fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": math.radians(30.0)})
 
 
 ##
