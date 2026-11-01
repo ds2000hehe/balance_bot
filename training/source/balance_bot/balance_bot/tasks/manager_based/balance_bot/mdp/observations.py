@@ -98,7 +98,7 @@ class FilteredGravity(ManagerTermBase):
 class PositionError(ManagerTermBase):
     """How far the robot is behind (+) or ahead (-) of where the forward command says it should be [m], scaled.
 
-    ``integral(cmd_forward - wheel_radius * mean(measured wheel speed)) dt``, clipped to +-``limit`` and divided by
+    ``integral(cmd_forward - wheel_radius * (right - left) / 2) dt`` (measured wheel speeds, mirrored joints), clipped to +-``limit`` and divided by
     it. Only wheel odometry (the speed estimate the firmware reports), so the robot's policy node computes exactly the
     same (``PositionError`` in policy_core.py). At zero command it is minus the distance rolled since the robot
     stopped: with it the policy can come back to its spot instead of creeping away. Stored in
@@ -122,7 +122,8 @@ class PositionError(ManagerTermBase):
         action_name: str = "wheel_vel",
     ) -> torch.Tensor:
         cmd = env.command_manager.get_command(command_name)[:, 1]  # forward (base y)
-        v = wheel_radius * env.action_manager.get_term(action_name).measured_velocity.mean(dim=1)
+        w = env.action_manager.get_term(action_name).measured_velocity
+        v = wheel_radius * 0.5 * (w[:, 1] - w[:, 0])  # joints are mirrored: forward = left negative, right positive
         self.error[:] = torch.clamp(self.error + (cmd - v) * env.step_dt, -limit, limit)
         return (self.error / limit).unsqueeze(1)
 

@@ -306,7 +306,9 @@ class BalanceBotHoldEnvCfg(BalanceBotEnvCfg):
     """Raw throttle (duty) policy that also holds its position.
 
     smooth6's settings (duty output, 5-80 ms delay, wheel drag up to 0.6 N m for carpet, pitch_rate -0.6,
-    action_rate -1.0) plus one more observation, the distance behind / ahead of the forward command from wheel
+    action_rate -1.0) with the full throttle range (action = duty, robot: action_scale = motor_max_rad_s), pushes up
+    to 1 m/s, episodes ending at 40 deg, wide physics randomization (mass, centre of mass, inertia), plus one more
+    observation, the distance behind / ahead of the forward command from wheel
     odometry (``PositionError``, appended after the last actions), and a reward for keeping it small. The robot's
     policy node detects the extra input from the policy's input size.
     """
@@ -321,6 +323,27 @@ class BalanceBotHoldEnvCfg(BalanceBotEnvCfg):
         self.observations.policy.position_error = ObsTerm(func=mdp.PositionError, params={"limit": 0.5})
         self.observations.critic.position_error = ObsTerm(func=mdp.position_error_state, params={"limit": 0.5})
         self.rewards.position_hold = RewTerm(func=mdp.position_hold_exp, weight=2.0, params={"std": 0.1})
+        # full throttle range: the action is the duty directly (scale = max_rad_s), not limited to 30/68 = 44 %
+        self.actions.wheel_vel.scale = self.actions.wheel_vel.drive.max_rad_s
+        self.actions.wheel_vel.clip = {".*": (-self.actions.wheel_vel.drive.max_rad_s, self.actions.wheel_vel.drive.max_rad_s)}
+        # harder pushes, and episodes run to 40 deg so recovering from big leans is practised
+        self.events.push_robot.params["velocity_range"] = {"x": (-0.3, 0.3), "y": (-1.0, 1.0)}
+        self.terminations.fell_over.params["limit_angle"] = math.radians(40.0)
+        # physics of the real robot not known exactly: wider mass, centre of mass (forward / back and height matter
+        # most for balancing), separate inertia; tyres grip (no slip on the real floor)
+        # the real body (everything but the wheels) weighs 2 kg; the model's two body parts are 3 kg each (6 kg):
+        # set each to 0.7-1.4 kg (body 1.4-2.8 kg; inertia scales with the mass, then body_inertia on top)
+        self.events.add_body_mass.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["body", "mate_connector_1"])
+        self.events.add_body_mass.params["mass_distribution_params"] = (0.7, 1.4)
+        self.events.add_body_mass.params["operation"] = "abs"
+        self.events.body_com.params["com_range"] = {"x": (-0.01, 0.01), "y": (-0.02, 0.02), "z": (-0.04, 0.04)}
+        self.events.body_inertia = EventTerm(
+            func=mdp.randomize_rigid_body_inertia,
+            mode="startup",
+            params={"asset_cfg": SceneEntityCfg("robot", body_names="body"), "scale_range": (0.7, 1.5)},
+        )
+        self.events.physics_material.params["static_friction_range"] = (1.0, 1.5)
+        self.events.physics_material.params["dynamic_friction_range"] = (0.9, 1.3)
 
 
 @configclass

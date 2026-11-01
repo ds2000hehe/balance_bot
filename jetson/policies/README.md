@@ -16,8 +16,9 @@ Wobble = pitch-rate std in Isaac Lab (256 robots, measured ZS-X11H dead zone), l
 
 | Name | Training run | Wobble standing / driving | Speed error | Notes |
 |---|---|---|---|---|
+| `smooth11` | `2026-11-01_15-06-28_smooth11_2kg` | see below | see below | **default**. Task Template-Balance-Bot-Hold-v0: raw throttle with the full range (params.yaml: action_scale 68), holds its position (14th input: distance from wheel odometry, policy_node detects it), body mass corrected to the real 2 kg, wide randomization of centre of mass (+-2 cm fwd, +-4 cm height), inertia (0.7-1.5x), high tyre grip, pushes up to 1 m/s, episodes to 40 deg |
 | `smooth7` | `2026-11-01_13-12-11_smooth7_track` | see below | see below | `smooth6` with tighter speed tracking (track_lin_vel weight 3, std 0.15): wanders half as far standing, wobbles a bit more |
-| `smooth6` | `2026-11-01_12-28-45_smooth6_robust` | see below | see below | **default**. Like `smooth4_duty` (raw throttle, params.yaml), trained for 5-80 ms control delay (was 5-40), wheel drag up to 0.6 N m (carpet), pitch_rate -0.6, action_rate -1.0. In Isaac: calmer than smooth4_duty at 60-80 ms delay, worse at 20-40 ms |
+| `smooth6` | `2026-11-01_12-28-45_smooth6_robust` | see below | see below | Like `smooth4_duty` (raw throttle, params.yaml), trained for 5-80 ms control delay (was 5-40), wheel drag up to 0.6 N m (carpet), pitch_rate -0.6, action_rate -1.0. In Isaac: calmer than smooth4_duty at 60-80 ms delay, worse at 20-40 ms |
 | `smooth4_duty` | `2026-11-01_10-33-48_smooth4_duty` | see below | see below | Like `smooth3`, but outputs raw throttle (`output_mode: duty`, set by its params.yaml): no Arduino PI loop on the coarse speed pulses. Balance only |
 | `smooth3` | `2026-10-30_23-12-57_smooth3` | see below | see below | Balance only (does not stand up, follows speed commands poorly), trained on the realistic model: SC speed pulses without direction, firmware slew / safe reversal, gyro+accel tilt filter with mount error and bias, 5-40 ms delay, falls end at 30 deg. Stronger smoothness penalties (pitch_rate -0.3, action_rate -0.6, wheel_acc -2e-6) |
 | `smooth2` | `2026-10-25_23-20-18_smooth2` | **0.25** / **0.37** rad/s | 0.082 m/s | From scratch, stronger smoothness penalties (action_rate -0.3, pitch_rate -0.15). Sometimes cannot get up from lying flat (~7% in Isaac, seen once in the sim test): stand it up by hand |
@@ -58,3 +59,10 @@ Standing 10 s (Isaac, 5-40 ms delay): distance wandered (median / 90th percentil
 | `smooth7` | **0.47 / 0.96** m | 0.41 rad/s | 17% |
 
 policy_node's drift correction (drift_ki) changes neither: the policies hardly respond to its small command offsets.
+
+On the corrected physics (2 kg body, randomized centre of mass / inertia), falls counted at 50 deg (the robot's cut-off):
+
+| | wander 10 s standing (median / p90) | falls standing | falls after push 1.0 m/s fwd / back | 1.5 m/s fwd / back |
+|---|---|---|---|---|
+| `smooth6` | 0.90 / 1.74 m | 7.8% | 13% / 10% | 50% / 31% |
+| `smooth11` | **0.21 / 0.95 m** | **5.1%** | 11% / 13% | **31%** / 34% |

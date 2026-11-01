@@ -113,7 +113,7 @@ class DriftCorrector:
 class PositionError:
     """Distance behind (+) / ahead (-) of the forward command from wheel odometry, for position-holding policies.
 
-    Same as ``PositionError`` in the Isaac Lab package: ``integral(cmd_forward - wheel_radius * mean(wheel speed)) dt``
+    Same as ``PositionError`` in the Isaac Lab package: ``integral(cmd_forward - wheel_radius * (right - left) / 2) dt``
     in the policy's frame and wheel convention, clipped to +-``limit``; the observation is ``error / limit``. At zero
     command it is minus the distance rolled since the robot stopped, so the policy can come back to its spot.
     """
@@ -124,7 +124,7 @@ class PositionError:
         self.error = 0.0
 
     def update(self, cmd_forward_policy: float, wheel_vel_sim: np.ndarray, dt: float) -> float:
-        v = self.wheel_radius * float(np.mean(wheel_vel_sim))
+        v = self.wheel_radius * 0.5 * float(wheel_vel_sim[1] - wheel_vel_sim[0])  # sim joints are mirrored
         self.error = float(np.clip(self.error + (cmd_forward_policy - v) * dt, -self.limit, self.limit))
         return self.error / self.limit
 

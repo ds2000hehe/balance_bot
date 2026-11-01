@@ -1,0 +1,3 @@
+# settings this policy needs on top of config/robot.yaml (entrypoint.sh merges them)
+output_mode: "duty"    # trained on raw throttle ("D" commands): the Arduino's PI speed loop is bypassed
+action_scale: 68.0     # full throttle range: action 1 = duty 1 (= motor_max_rad_s)
