@@ -5,9 +5,8 @@
 #                        wheel_test  cmd_vel straight to wheel speeds, no balancing (robot on a stand)
 #                        bridge      bridge only (for wheel_check)
 #                      configured by /config/robot.yaml
-#   joystick           PS4 controller: joy_node + joy_teleop (/cmd_vel, R2 = dead-man) + Circle/Cross
+#   joystick           PS4 controller: joy_node + teleop_twist_joy (/cmd_vel, R2 = dead-man) + Circle/Cross
 #                      start/stop, configured by /config/joystick.yaml
-#                      + /config/joystick_map.yaml (joy_calibrate)
 #   policies           list the policy library (/policies)
 #   <anything else>    run it inside the ROS environment, e.g. "ros2 run balance_bot_policy wheel_check"
 set -e

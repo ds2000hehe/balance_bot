@@ -9,8 +9,8 @@ Two containers run everything on the robot computer and start on every boot:
 PS4 controller ─Bluetooth─► host (bluez) ─► /dev/input/js0
                                                   │
               ┌──────── joystick container ───────┼────────────────┐
-              │ joy_node ──/joy──► joy_teleop ──────/cmd_vel────┐  │  (only while R2 is held)
-              │                       └────────/balance_bot/enable│  (Circle = start, Cross = stop)
+              │ joy_node ──/joy──► teleop_twist_joy ──/cmd_vel──┐  │  (only while R2 is held)
+              │               └──► joy_enable ──/balance_bot/enable│  (Circle = start, Cross = stop)
               └─────────────────────────────────────────────────┼──┘
 IMU driver ──/imu──►  ┌──────────── balance_bot container ────────▼────┐
                       │ policy_node ──/wheel_cmd──► wheel_serial_bridge │──USB──► Arduino ──► ZS-X11H drivers
@@ -29,8 +29,7 @@ The IMU driver is not in the containers: run it as before (on the host or as ano
 |---|---|
 | `.env` | `SERIAL_PORT` (Arduino USB port), `BAUD`, `MODE` (`balance` / `wheel_test` / `bridge`), `POLICY_NAME`, `ROS_DOMAIN_ID`, `RMW_IMPLEMENTATION` |
 | `config/robot.yaml` | topics (`imu_topic`, `cmd_vel_topic`, ...), IMU mounting (`imu_to_body`), `wheel_signs`, speed limits, drift correction, `start_enabled`; `wheel_teleop` section for `MODE=wheel_test` (`track_width`) |
-| `config/joystick.yaml` | PS4 controller: speeds, stick dead zone, fallback button / axis numbers |
-| `config/joystick_map.yaml` | written by `joy_calibrate`: this controller's axis / button numbers and directions |
+| `config/joystick.yaml` | PS4 controller: start / stop buttons, dead-man button, which sticks drive and turn, speeds |
 | `policies/<name>/policy.onnx` | the policy library, see [policies/README.md](policies/README.md). `add_policy.sh` adds a training run |
 
 ## Install (once, on the robot computer)
@@ -101,20 +100,6 @@ ls /dev/input/js*               # /dev/input/js0 = the controller is connected
 The light bar goes solid when connected. A wired USB cable works too, without pairing. The controller needs the
 `hid_playstation` driver, included in Linux 5.12 and newer (Ubuntu 22.04+, Raspberry Pi OS bookworm).
 
-## Controller mapping (once)
-
-Axis and button numbers depend on the driver (SDL, Bluetooth vs USB), so measure them. Balancing off, joystick
-container running, controller connected:
-
-```bash
-sudo docker compose exec -it joystick ros2 run balance_bot_policy joy_calibrate
-sudo docker compose restart joystick
-sudo docker compose logs joystick | grep joy_teleop    # shows the mapping in use
-```
-
-It asks you to push the left stick up, the right stick right, squeeze R2, press Circle, press Cross, and writes
-`config/joystick_map.yaml`. Re-run it after changing controller or connection.
-
 ## Driving
 
 With `start_enabled: false` (the default) the robot does nothing after boot until you press **Circle**.
@@ -128,12 +113,13 @@ With `start_enabled: false` (the default) the robot does nothing after boot unti
 | left stick up / down (with R2) | forward / back (0.5 m/s at full stick) |
 | right stick left / right (with R2) | turn (1.5 rad/s) |
 
-Speeds: `forward_scale` / `turn_scale` in `config/joystick.yaml` (the policy is trained up to 1.5 m/s, 2 rad/s).
+Speeds: `scale_linear` / `scale_angular` in `config/joystick.yaml` (the policy is trained up to 1.5 m/s, 2 rad/s).
 
 If the controller disconnects (flat battery, out of range), the robot keeps balancing in place: `/cmd_vel` goes
 quiet and the policy ramps its command to zero within a second. Reconnect with PS and press Cross to stop.
 
-If a stick or button does the wrong thing, run `joy_calibrate` again (above).
+Check the buttons and sticks of your controller with `docker compose exec joystick ros2 topic echo /joy` and change
+`config/joystick.yaml` if they differ (`docker compose restart joystick`).
 
 Without the controller, from any machine on the same network and `ROS_DOMAIN_ID`:
 
@@ -200,7 +186,8 @@ retraining with the drive model (`mdp/hoverboard.py`) set to them.
 * `no recent IMU data`: the IMU driver is not running, publishes on another topic (`imu_topic`), another
   `ROS_DOMAIN_ID`, or below 100 Hz.
 * Circle does nothing: `docker compose logs joystick` should show "start button: balancing on". If not,
-  `ls /dev/input/js*` on the host (controller connected?) and run `joy_calibrate` (button numbers). If it shows but the robot does not start, `docker compose logs balance_bot` says why (no IMU or
+  `ls /dev/input/js*` on the host (controller connected?) and `docker compose exec joystick ros2 topic echo /joy`
+  (button numbers). If it shows but the robot does not start, `docker compose logs balance_bot` says why (no IMU or
   wheel data).
 * Topics visible with `ros2 topic list` but no data arrives: make the IMU driver use the same `RMW_IMPLEMENTATION`.
   The containers use Fast DDS over UDP only (`fastdds_udp.xml`). They run as root, and Fast DDS's shared-memory

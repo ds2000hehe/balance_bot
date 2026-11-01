@@ -84,7 +84,7 @@ echo
 echo "reset the robot if it falls:  ROS_DOMAIN_ID=$DOMAIN ros2 topic pub --once /sim/reset std_msgs/msg/Empty '{}'"
 if [ "$JOY" = true ]; then
     echo "PS4 controller: Circle = start balancing, Cross = stop, hold R2 + sticks = drive. Ctrl-C quits."
-    ros2 launch balance_bot_policy joystick.launch.py params_file:="$JETSON/config/joystick.yaml" map_file:="$JETSON/config/joystick_map.yaml"
+    ros2 launch balance_bot_policy joystick.launch.py params_file:="$JETSON/config/joystick.yaml"
 else
     ros2 run balance_bot_policy teleop_key
 fi
