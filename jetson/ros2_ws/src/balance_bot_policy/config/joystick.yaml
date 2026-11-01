@@ -1,7 +1,7 @@
 # PS4 controller. Edit and restart:  docker compose restart joystick
 #
 # Driving uses teleop_twist_joy's standard settings (its ps3 config, as  ros2 launch teleop_twist_joy teleop-launch.py):
-# LEFT stick up / down = forward / back (0.7 m/s), left / right = turn (0.4 rad/s), joy_node dead zone 0.3.
+# LEFT stick up / down = forward / back, left / right = turn, joy_node dead zone 0.3.
 # Only the settings below are changed. Check button numbers with:  docker compose exec joystick ros2 topic echo /joy
 # (this PS4 controller on the Jetson: 0 Cross, 1 Circle, 7 R2, 8 Share)
 
@@ -9,6 +9,10 @@ teleop_twist_joy_node:
   ros__parameters:
     enable_button: 7             # hold R2 to drive (standard ps3 config: 8 = Share on this controller)
     enable_turbo_button: -1      # off (standard: 10)
+    scale_linear:
+      x: 1.5                     # m/s at full stick (standard 0.7; the policy is trained up to 1.5)
+    scale_angular:
+      yaw: 2.0                   # rad/s at full stick (standard 0.4; trained up to 2.0)
 
 joy_enable:
   ros__parameters:

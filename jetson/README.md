@@ -110,12 +110,12 @@ With `start_enabled: false` (the default) the robot does nothing after boot unti
 | **Circle** | start balancing. From lying on its front or back the robot gets up by itself |
 | **Cross** | stop: motors off, **the robot falls over** (hold it, or stop near the ground) |
 | hold **R2** | dead-man: the stick only drives while R2 is held. Release it and the robot stops and stands |
-| left stick up / down (while enabled) | forward / back (0.7 m/s at full stick) |
-| left stick left / right (while enabled) | turn (0.4 rad/s) |
+| left stick up / down (while enabled) | forward / back (1.5 m/s at full stick) |
+| left stick left / right (while enabled) | turn (2.0 rad/s) |
 
 Driving uses teleop_twist_joy's standard settings (its `ps3` config, the same as
-`ros2 launch teleop_twist_joy teleop-launch.py`) with the enable button moved to R2 (button 7) and turbo off;
-`config/joystick.yaml` holds those two changes and the Circle / Cross buttons.
+`ros2 launch teleop_twist_joy teleop-launch.py`) with the enable button moved to R2 (button 7), turbo off and full-stick speeds raised to 1.5 m/s, 2 rad/s;
+`config/joystick.yaml` holds those changes and the Circle / Cross buttons.
 
 If the controller disconnects (flat battery, out of range), the robot keeps balancing in place: `/cmd_vel` goes
 quiet and the policy ramps its command to zero within a second. Reconnect with PS and press Cross to stop.
