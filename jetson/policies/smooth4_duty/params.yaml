@@ -1,0 +1,2 @@
+# settings this policy needs on top of config/robot.yaml (entrypoint.sh merges them)
+output_mode: "duty"    # trained on raw throttle ("D" commands): the Arduino's PI speed loop is bypassed

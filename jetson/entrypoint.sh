@@ -57,13 +57,20 @@ if [ "$MODE" = "balance" ]; then
         list_policies
         exit 1
     fi
-    # robot.yaml with policy_path pointing at the chosen policy
+    # robot.yaml with policy_path pointing at the chosen policy, plus the policy's own settings
+    # (/policies/<name>/params.yaml, e.g. output_mode: duty) on top
     RUN_PARAMS=/tmp/robot.yaml
     python3 - "$PARAMS" "$RUN_PARAMS" "$POLICY_FILE" <<'EOF'
-import sys, yaml
+import os, sys, yaml
 src, dst, policy = sys.argv[1:]
 params = yaml.safe_load(open(src))
-params["balance_bot_policy"]["ros__parameters"]["policy_path"] = policy
+node = params["balance_bot_policy"]["ros__parameters"]
+node["policy_path"] = policy
+extra = os.path.join(os.path.dirname(policy), "params.yaml")
+if os.path.exists(extra):
+    overrides = yaml.safe_load(open(extra)) or {}
+    node.update(overrides)
+    print(f"policy settings from {extra}: {overrides}")
 yaml.safe_dump(params, open(dst, "w"), sort_keys=False)
 EOF
     PARAMS=$RUN_PARAMS

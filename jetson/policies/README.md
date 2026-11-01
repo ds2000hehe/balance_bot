@@ -16,6 +16,7 @@ Wobble = pitch-rate std in Isaac Lab (256 robots, measured ZS-X11H dead zone), l
 
 | Name | Training run | Wobble standing / driving | Speed error | Notes |
 |---|---|---|---|---|
+| `smooth4_duty` | `2026-11-01_10-33-48_smooth4_duty` | see below | see below | Like `smooth3`, but outputs raw throttle (`output_mode: duty`, set by its params.yaml): no Arduino PI loop on the coarse speed pulses. Balance only |
 | `smooth3` | `2026-10-30_23-12-57_smooth3` | see below | see below | **default**. Balance only (does not stand up, follows speed commands poorly), trained on the realistic model: SC speed pulses without direction, firmware slew / safe reversal, gyro+accel tilt filter with mount error and bias, 5-40 ms delay, falls end at 30 deg. Stronger smoothness penalties (pitch_rate -0.3, action_rate -0.6, wheel_acc -2e-6) |
 | `smooth2` | `2026-10-25_23-20-18_smooth2` | **0.25** / **0.37** rad/s | 0.082 m/s | From scratch, stronger smoothness penalties (action_rate -0.3, pitch_rate -0.15). Sometimes cannot get up from lying flat (~7% in Isaac, seen once in the sim test): stand it up by hand |
 | `scratch` | `2026-10-25_13-47-08_scratch` | 0.38 / 0.45 rad/s | **0.071** m/s | from scratch, original penalties: tracks speed best, wobbles more, always gets up from lying flat |
@@ -33,4 +34,7 @@ pushes, drive = random commands with pushes; a fall = tilt beyond 30 deg):
 | | falls stand / drive | rocking stand / drive | tilt wobble stand | wheel accel stand | speed error drive |
 |---|---|---|---|---|---|
 | `smooth2` | 38% / 97% | 0.50 / 0.53 rad/s | 1.85 deg | 30 rad/s2 | 0.20 m/s |
-| `smooth3` | **12%** / **21%** | **0.34** / **0.40** rad/s | **1.14** deg | **22** rad/s2 | 0.79 m/s |
+| `smooth3` | 12% / 21% | 0.34 / 0.40 rad/s | 1.14 deg | 22 rad/s2 | 0.79 m/s |
+| `smooth4_duty` | **8%** / **18%** | **0.31** / **0.35** rad/s | **0.86** deg | **18** rad/s2 | 0.84 m/s |
+
+A policy folder may hold a `params.yaml`: its values override `config/robot.yaml` for that policy (entrypoint.sh).
