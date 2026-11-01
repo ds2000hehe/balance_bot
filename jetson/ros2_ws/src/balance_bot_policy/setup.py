@@ -27,6 +27,7 @@ setup(
             "wheel_serial_bridge = balance_bot_policy.wheel_serial_bridge:main",
             "wheel_check = balance_bot_policy.wheel_check:main",
             "joy_enable = balance_bot_policy.joy_enable:main",
+            "latency_check = balance_bot_policy.latency_check:main",
         ],
     },
 )

@@ -36,10 +36,11 @@ class DelayedJointVelocityAction(JointVelocityAction):
     def __init__(self, cfg: DelayedJointVelocityActionCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
         self._decimation = env.cfg.decimation
-        if not 0 <= cfg.delay_range[0] <= cfg.delay_range[1] <= 2 * self._decimation:
-            raise ValueError(f"delay_range must be within [0, {2 * self._decimation}] physics steps")
-        # processed targets of the current and the two previous policy steps
-        self._history = torch.zeros(3, self.num_envs, self.action_dim, device=self.device)
+        if not 0 <= cfg.delay_range[0] <= cfg.delay_range[1]:
+            raise ValueError("delay_range must be (min, max) with 0 <= min <= max physics steps")
+        # processed targets of the current and enough previous policy steps for the longest delay
+        n = -(-cfg.delay_range[1] // self._decimation) + 1
+        self._history = torch.zeros(n, self.num_envs, self.action_dim, device=self.device)
         self._delay = torch.zeros(self.num_envs, 1, dtype=torch.long, device=self.device)
         self._substep = 0
         self.reset()
@@ -54,11 +55,11 @@ class DelayedJointVelocityAction(JointVelocityAction):
         # the newest target that is at least `delay` physics steps old
         k = self._substep
         self._substep += 1
-        return torch.where(
-            self._delay <= k,
-            self._history[0],
-            torch.where(self._delay <= k + self._decimation, self._history[1], self._history[2]),
-        )
+        # policy steps back: the smallest j with delay <= k + j * decimation
+        j = torch.clamp(torch.div(self._delay - k + self._decimation - 1, self._decimation, rounding_mode="floor"),
+                        0, self._history.shape[0] - 1)
+        idx = j.view(1, -1, 1).expand(1, -1, self.action_dim)
+        return torch.gather(self._history, 0, idx).squeeze(0)
 
     def apply_actions(self):
         self._asset.set_joint_velocity_target(self._delayed_target(), joint_ids=self._joint_ids)
