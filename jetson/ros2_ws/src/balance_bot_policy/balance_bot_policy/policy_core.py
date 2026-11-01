@@ -110,6 +110,28 @@ class DriftCorrector:
         self.integral = 0.0
 
 
+class PositionError:
+    """Distance behind (+) / ahead (-) of the forward command from wheel odometry, for position-holding policies.
+
+    Same as ``PositionError`` in the Isaac Lab package: ``integral(cmd_forward - wheel_radius * mean(wheel speed)) dt``
+    in the policy's frame and wheel convention, clipped to +-``limit``; the observation is ``error / limit``. At zero
+    command it is minus the distance rolled since the robot stopped, so the policy can come back to its spot.
+    """
+
+    def __init__(self, wheel_radius: float, limit: float = 0.5):
+        self.wheel_radius = wheel_radius
+        self.limit = limit
+        self.error = 0.0
+
+    def update(self, cmd_forward_policy: float, wheel_vel_sim: np.ndarray, dt: float) -> float:
+        v = self.wheel_radius * float(np.mean(wheel_vel_sim))
+        self.error = float(np.clip(self.error + (cmd_forward_policy - v) * dt, -self.limit, self.limit))
+        return self.error / self.limit
+
+    def reset(self):
+        self.error = 0.0
+
+
 def build_observation(
     ang_vel_policy: np.ndarray,
     gravity_policy: np.ndarray,
@@ -117,17 +139,20 @@ def build_observation(
     cmd_yaw: float,
     wheel_vel_sim: np.ndarray,
     last_action: np.ndarray,
+    position_error: float | None = None,
 ) -> np.ndarray:
-    obs = np.concatenate(
-        [
-            ang_vel_policy * ANG_VEL_SCALE,
-            gravity_policy,
-            [cmd_lin_vel_policy[0], cmd_lin_vel_policy[1], cmd_yaw],
-            wheel_vel_sim * WHEEL_VEL_SCALE,
-            last_action,
-        ]
-    ).astype(np.float32)
-    assert obs.shape == (NUM_OBS,)
+    """The policy's observation; ``position_error`` (scaled PositionError) only for policies trained with it."""
+    parts = [
+        ang_vel_policy * ANG_VEL_SCALE,
+        gravity_policy,
+        [cmd_lin_vel_policy[0], cmd_lin_vel_policy[1], cmd_yaw],
+        wheel_vel_sim * WHEEL_VEL_SCALE,
+        last_action,
+    ]
+    if position_error is not None:
+        parts.append([position_error])
+    obs = np.concatenate(parts).astype(np.float32)
+    assert obs.shape == (NUM_OBS + (position_error is not None),)
     return obs
 
 
@@ -140,6 +165,7 @@ class Policy:
 
             self._session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
             self._input = self._session.get_inputs()[0].name
+            self.input_size = int(self._session.get_inputs()[0].shape[1])
             self._run = lambda obs: self._session.run(None, {self._input: obs[None]})[0][0]
         else:
             import torch
@@ -152,6 +178,11 @@ class Policy:
                     return self._model(torch.from_numpy(obs)[None]).numpy()[0]
 
             self._run = run
+            self.input_size = NUM_OBS
+            try:
+                run(np.zeros(NUM_OBS, dtype=np.float32))
+            except Exception:
+                self.input_size = NUM_OBS + 1
 
     def __call__(self, obs: np.ndarray) -> np.ndarray:
         return np.asarray(self._run(obs), dtype=np.float32)
