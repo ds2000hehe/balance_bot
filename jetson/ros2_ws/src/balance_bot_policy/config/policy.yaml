@@ -52,7 +52,7 @@ balance_bot_policy:
     sensor_timeout: 0.1                    # s without IMU / wheel data -> zero wheel speed
     # tilt cut-off: beyond max_tilt_deg the motors switch off, wheels coast (training ends episodes at 30 deg). Resumes after
     # being held within resume_tilt_deg for resume_hold_s; resume_tilt_deg 0 = only by re-enabling (Circle)
-    max_tilt_deg: 45.0
+    max_tilt_deg: 50.0
     resume_tilt_deg: 5.0
     resume_hold_s: 0.5
     start_enabled: true

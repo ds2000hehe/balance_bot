@@ -33,10 +33,12 @@ from std_msgs.msg import Bool, Float32MultiArray
 from .policy_core import (
     BODY_TO_POLICY,
     NUM_ACTIONS,
+    NUM_OBS,
     CommandSmoother,
     DriftCorrector,
     GravityEstimator,
     Policy,
+    PositionError,
     build_observation,
     quat_rotate_inverse,
 )
@@ -72,7 +74,7 @@ class PolicyNode(Node):
         # episodes at 30 deg, so between 30 deg and the cut-off the policy is outside what it learned. It resumes after
         # being held within resume_tilt_deg for resume_hold_s
         # (resume_tilt_deg 0: only after the enable topic / Circle again)
-        self.max_tilt_deg = p("max_tilt_deg", 45.0).value
+        self.max_tilt_deg = p("max_tilt_deg", 50.0).value
         self.resume_tilt_deg = p("resume_tilt_deg", 5.0).value
         self.resume_hold_s = p("resume_hold_s", 0.5).value
         self.tripped = False
@@ -95,7 +97,14 @@ class PolicyNode(Node):
         if not self.policy_path:
             raise RuntimeError("Parameter 'policy_path' is required (path to policy.pt or policy.onnx)")
         self.policy = Policy(self.policy_path)
-        self.get_logger().info(f"Loaded policy from {self.policy_path}")
+        # position-holding policies have one more input: the distance behind / ahead of the forward command
+        self.position_error = (PositionError(self.wheel_radius) if self.policy.input_size == NUM_OBS + 1 else None)
+        if self.policy.input_size not in (NUM_OBS, NUM_OBS + 1):
+            raise RuntimeError(f"policy takes {self.policy.input_size} inputs, expected {NUM_OBS} or {NUM_OBS + 1}")
+        self.get_logger().info(
+            f"Loaded policy from {self.policy_path}"
+            + (" (position hold: forward drift_ki ignored)" if self.position_error is not None else "")
+        )
 
         # -- state
         self.gravity = GravityEstimator(self.gravity_filter_tau)
@@ -168,6 +177,8 @@ class PolicyNode(Node):
         self.cmd_smoother.reset()
         self.drift.reset()
         self.yaw_drift.reset()
+        if self.position_error is not None:
+            self.position_error.reset()
 
     def _tilt_cutoff(self, gravity_policy: np.ndarray, now: float) -> bool:
         """True while the wheels must stay stopped because the robot tilted beyond max_tilt_deg."""
@@ -247,17 +258,24 @@ class PolicyNode(Node):
             self._motors_off()
             return
         upright = gravity_policy[2] < -0.9  # tilted less than ~25 deg
-        cmd_forward = self.drift.update(cmd_forward, self._forward_speed(), upright, 1.0 / self.rate)
+        if self.position_error is None:
+            cmd_forward = self.drift.update(cmd_forward, self._forward_speed(), upright, 1.0 / self.rate)
         yaw_rate = float((self.imu_to_body @ self.ang_vel_imu)[2])
         cmd_yaw = self.yaw_drift.update(cmd_yaw, yaw_rate, upright, 1.0 / self.rate)
 
+        cmd_lin_vel_policy = BODY_TO_POLICY @ np.array([cmd_forward, 0.0, 0.0])
+        wheel_vel_sim = self._topic_to_sim(self.wheel_vel)
+        position_error = None
+        if self.position_error is not None:
+            position_error = self.position_error.update(float(cmd_lin_vel_policy[1]), wheel_vel_sim, 1.0 / self.rate)
         obs = build_observation(
             ang_vel_policy=self.imu_to_policy @ self.ang_vel_imu,
             gravity_policy=gravity_policy,
-            cmd_lin_vel_policy=BODY_TO_POLICY @ np.array([cmd_forward, 0.0, 0.0]),
+            cmd_lin_vel_policy=cmd_lin_vel_policy,
             cmd_yaw=cmd_yaw,
-            wheel_vel_sim=self._topic_to_sim(self.wheel_vel),
+            wheel_vel_sim=wheel_vel_sim,
             last_action=self.last_action,
+            position_error=position_error,
         )
         action = self.policy(obs)
         self.last_action = action
