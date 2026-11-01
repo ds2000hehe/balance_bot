@@ -120,7 +120,7 @@ Driving uses teleop_twist_joy's standard settings (its `ps3` config, the same as
 If the controller disconnects (flat battery, out of range), the robot keeps balancing in place: `/cmd_vel` goes
 quiet and the policy ramps its command to zero within a second. Reconnect with PS and press Cross to stop.
 
-Check the buttons and sticks of your controller with `docker compose exec joystick ros2 topic echo /joy` and change
+Check the buttons and sticks of your controller with `docker compose exec joystick /entrypoint.sh ros2 topic echo /joy` and change
 `config/joystick.yaml` if they differ (`docker compose restart joystick`).
 
 Without the controller, from any machine on the same network and `ROS_DOMAIN_ID`:
@@ -150,7 +150,7 @@ changing motors, drivers, battery or firmware. Robot on a stand, wheels free:
 
     ```bash
     MODE=bridge docker compose up -d
-    docker compose exec balance_bot ros2 run balance_bot_policy wheel_check
+    docker compose exec balance_bot /entrypoint.sh ros2 run balance_bot_policy wheel_check
     docker compose cp balance_bot:/root/. ./wheel_check_logs     # CSV logs (wheel_check_<date>.csv)
     ```
 
@@ -188,7 +188,7 @@ retraining with the drive model (`mdp/hoverboard.py`) set to them.
 * `no recent IMU data`: the IMU driver is not running, publishes on another topic (`imu_topic`), another
   `ROS_DOMAIN_ID`, or below 100 Hz.
 * Circle does nothing: `docker compose logs joystick` should show "start button: balancing on". If not,
-  `ls /dev/input/js*` on the host (controller connected?) and `docker compose exec joystick ros2 topic echo /joy`
+  `ls /dev/input/js*` on the host (controller connected?) and `docker compose exec joystick /entrypoint.sh ros2 topic echo /joy`
   (button numbers). If it shows but the robot does not start, `docker compose logs balance_bot` says why (no IMU or
   wheel data).
 * Topics visible with `ros2 topic list` but no data arrives: make the IMU driver use the same `RMW_IMPLEMENTATION`.

@@ -2,7 +2,7 @@
 #
 # Driving uses teleop_twist_joy's standard settings (its ps3 config, as  ros2 launch teleop_twist_joy teleop-launch.py):
 # LEFT stick up / down = forward / back, left / right = turn, joy_node dead zone 0.3.
-# Only the settings below are changed. Check button numbers with:  docker compose exec joystick ros2 topic echo /joy
+# Only the settings below are changed. Check button numbers with:  docker compose exec joystick /entrypoint.sh ros2 topic echo /joy
 # (this PS4 controller on the Jetson: 0 Cross, 1 Circle, 7 R2, 8 Share)
 
 teleop_twist_joy_node:

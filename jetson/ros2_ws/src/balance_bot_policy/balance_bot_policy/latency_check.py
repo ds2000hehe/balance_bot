@@ -1,7 +1,7 @@
 """Measure the real control delay: throttle pulse on /wheel_duty -> first reaction in the IMU gyro and wheel speed.
 
     MODE=bridge docker compose up -d          # bridge only, no policy
-    docker compose exec balance_bot ros2 run balance_bot_policy latency_check
+    docker compose exec -it balance_bot /entrypoint.sh ros2 run balance_bot_policy latency_check
 
 Hold the robot in the air by its body (wheels free, not touching anything), still. Both wheels get short throttle
 pulses; spinning a wheel up twists the body the other way, which the gyro sees as soon as the motor produces torque.
