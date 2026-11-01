@@ -66,7 +66,18 @@ class PolicyNode(Node):
         # rotation (row-major 3x3) taking IMU-frame vectors into the robot body frame (x forward, y left, z up);
         # the default (identity) is for an IMU mounted with its axes along the robot's
         self.imu_to_body = np.array(p("imu_to_body", np.eye(3).flatten().tolist()).value).reshape(3, 3)
+        # tilt trim: the robot's real balance point leans pitch_trim_deg forward (centre of mass not over the axle).
+        # Rotating the measured gravity by it makes that lean read as upright, so the policy balances there instead
+        # of rolling to "correct" it (steady drift, faster one way). Find it with the robot disabled: hold it on its
+        # wheels where it balances by itself and read "lean fwd" in the log.
+        t = np.radians(p("pitch_trim_deg", 0.0).value)
+        trim = np.array([[np.cos(t), 0.0, np.sin(t)], [0.0, 1.0, 0.0], [-np.sin(t), 0.0, np.cos(t)]])
         self.imu_to_policy = BODY_TO_POLICY @ self.imu_to_body
+        self.gravity_imu_to_policy = BODY_TO_POLICY @ trim @ self.imu_to_body
+        # run the policy as soon as a fresh IMU sample arrives (at control_rate), not on a free-running timer: the
+        # tilt it acts on is then at most one IMU sample old instead of up to a timer period older
+        self.step_on_imu = p("step_on_imu", True).value
+        self.last_step = 0.0
         self.use_imu_orientation = p("use_imu_orientation", True).value
         self.gravity_filter_tau = p("gravity_filter_tau", 0.5).value
         self.wheel_signs = np.array(p("wheel_signs", [1.0, 1.0]).value)
@@ -125,7 +136,7 @@ class PolicyNode(Node):
         self.create_subscription(Bool, enable_topic, self._on_enable, 10)
         self.wheel_pub = self.create_publisher(Float32MultiArray, wheel_cmd_topic, 10)
         self.duty_pub = self.create_publisher(Float32MultiArray, wheel_duty_topic, 10)
-        self.create_timer(1.0 / self.rate, self._step)
+        self.create_timer(1.0 / self.rate, self._on_timer)
 
         self.get_logger().info(
             f"imu: {imu_topic}, cmd_vel: {cmd_vel_topic}, wheel state: {wheel_state_topic}, "
@@ -150,6 +161,8 @@ class PolicyNode(Node):
             self.gravity_imu = self.gravity.update(gyro, accel, dt)
         self.ang_vel_imu = gyro
         self.imu_time = time.monotonic()
+        if self.step_on_imu and self.imu_time - self.last_step >= 0.9 / self.rate:
+            self._step()
 
     def _on_cmd_vel(self, msg: Twist):
         self.cmd = (
@@ -237,10 +250,23 @@ class PolicyNode(Node):
         """Zero motor duty: no throttle at all, the wheels coast (a zero speed target would still brake / correct)."""
         self.duty_pub.publish(Float32MultiArray(data=[0.0, 0.0]))
 
+    def _on_timer(self):
+        # fallback when the IMU drives the loop: only steps when the IMU has gone quiet (then _step stops the motors)
+        if not self.step_on_imu or time.monotonic() - self.last_step > 1.5 / self.rate:
+            self._step()
+
     def _step(self):
         now = time.monotonic()
+        self.last_step = now
         if not self.enabled:
             self._motors_off()
+            if self.debug_period > 0.0 and self.gravity_imu is not None and now - self.last_debug >= self.debug_period:
+                self.last_debug = now
+                g_body = self.imu_to_body @ self.gravity_imu
+                self.get_logger().info(
+                    f"disabled | lean fwd {np.degrees(np.arcsin(np.clip(g_body[0], -1, 1))):+5.1f} deg (raw, for "
+                    f"pitch_trim_deg), left {np.degrees(np.arcsin(np.clip(g_body[1], -1, 1))):+5.1f} deg"
+                )
             return
         if self.ang_vel_imu is None or now - self.imu_time > self.sensor_timeout:
             self.get_logger().warn("no recent IMU data, commanding zero wheel speed", throttle_duration_sec=1.0)
@@ -253,7 +279,7 @@ class PolicyNode(Node):
         # stop driving (but keep balancing) when cmd_vel goes quiet; ramp all command changes
         target = self.cmd if now - self.cmd_time < self.cmd_timeout else (0.0, 0.0)
         cmd_forward, cmd_yaw = self.cmd_smoother.update(target, 1.0 / self.rate)
-        gravity_policy = self.imu_to_policy @ self.gravity_imu
+        gravity_policy = self.gravity_imu_to_policy @ self.gravity_imu
         if self._tilt_cutoff(gravity_policy, now):
             self._motors_off()
             return
