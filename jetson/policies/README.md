@@ -16,6 +16,7 @@ Wobble = pitch-rate std in Isaac Lab (256 robots, measured ZS-X11H dead zone), l
 
 | Name | Training run | Wobble standing / driving | Speed error | Notes |
 |---|---|---|---|---|
+| `smooth7` | `2026-11-01_13-12-11_smooth7_track` | see below | see below | `smooth6` with tighter speed tracking (track_lin_vel weight 3, std 0.15): wanders half as far standing, wobbles a bit more |
 | `smooth6` | `2026-11-01_12-28-45_smooth6_robust` | see below | see below | **default**. Like `smooth4_duty` (raw throttle, params.yaml), trained for 5-80 ms control delay (was 5-40), wheel drag up to 0.6 N m (carpet), pitch_rate -0.6, action_rate -1.0. In Isaac: calmer than smooth4_duty at 60-80 ms delay, worse at 20-40 ms |
 | `smooth4_duty` | `2026-11-01_10-33-48_smooth4_duty` | see below | see below | Like `smooth3`, but outputs raw throttle (`output_mode: duty`, set by its params.yaml): no Arduino PI loop on the coarse speed pulses. Balance only |
 | `smooth3` | `2026-10-30_23-12-57_smooth3` | see below | see below | Balance only (does not stand up, follows speed commands poorly), trained on the realistic model: SC speed pulses without direction, firmware slew / safe reversal, gyro+accel tilt filter with mount error and bias, 5-40 ms delay, falls end at 30 deg. Stronger smoothness penalties (pitch_rate -0.3, action_rate -0.6, wheel_acc -2e-6) |
@@ -48,3 +49,12 @@ Standing, fixed control delay (rocking rad/s / falls):
 | 40 ms | **0.41** / **20%** | 0.46 / 27% |
 | 60 ms | 0.61 / **30%** | **0.50** / 40% |
 | 80 ms | 1.09 / 49% | **0.62** / 46% |
+
+Standing 10 s (Isaac, 5-40 ms delay): distance wandered (median / 90th percentile), rocking, falls:
+
+| | wander | rocking | falls |
+|---|---|---|---|
+| `smooth6` | 0.88 / 1.74 m | **0.35** rad/s | **14%** |
+| `smooth7` | **0.47 / 0.96** m | 0.41 rad/s | 17% |
+
+policy_node's drift correction (drift_ki) changes neither: the policies hardly respond to its small command offsets.
