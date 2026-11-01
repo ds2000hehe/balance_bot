@@ -93,3 +93,43 @@ class FilteredGravity(ManagerTermBase):
         self.g = torch.where(self.initialized.unsqueeze(1), g, g_acc)
         self.initialized[:] = True
         return self.g
+
+
+class PositionError(ManagerTermBase):
+    """How far the robot is behind (+) or ahead (-) of where the forward command says it should be [m], scaled.
+
+    ``integral(cmd_forward - wheel_radius * mean(measured wheel speed)) dt``, clipped to +-``limit`` and divided by
+    it. Only wheel odometry (the speed estimate the firmware reports), so the robot's policy node computes exactly the
+    same (``PositionError`` in policy_core.py). At zero command it is minus the distance rolled since the robot
+    stopped: with it the policy can come back to its spot instead of creeping away. Stored in
+    ``env.position_error`` for the position_hold reward.
+    """
+
+    def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self.error = torch.zeros(env.num_envs, device=env.device)
+        env.position_error = self.error
+
+    def reset(self, env_ids: Sequence[int] | None = None):
+        self.error[slice(None) if env_ids is None else env_ids] = 0.0
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        command_name: str = "base_velocity",
+        wheel_radius: float = 0.0825,
+        limit: float = 0.5,
+        action_name: str = "wheel_vel",
+    ) -> torch.Tensor:
+        cmd = env.command_manager.get_command(command_name)[:, 1]  # forward (base y)
+        v = wheel_radius * env.action_manager.get_term(action_name).measured_velocity.mean(dim=1)
+        self.error[:] = torch.clamp(self.error + (cmd - v) * env.step_dt, -limit, limit)
+        return (self.error / limit).unsqueeze(1)
+
+
+def position_error_state(env: ManagerBasedRLEnv, limit: float = 0.5) -> torch.Tensor:
+    """The PositionError of the policy group (for the critic), scaled the same way."""
+    error = getattr(env, "position_error", None)
+    if error is None:
+        return torch.zeros(env.num_envs, 1, device=env.device)
+    return (error / limit).unsqueeze(1)

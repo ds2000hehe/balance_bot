@@ -129,6 +129,8 @@ class ObservationsCfg:
         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
         wheel_vel = ObsTerm(func=mdp.measured_wheel_vel, noise=Unoise(n_min=-0.2, n_max=0.2), scale=0.05)
         actions = ObsTerm(func=mdp.last_action)
+        # distance behind / ahead of the forward command from wheel odometry (None: policies without it)
+        position_error = None
 
         def __post_init__(self) -> None:
             self.enable_corruption = True
@@ -145,6 +147,7 @@ class ObservationsCfg:
         wheel_vel = ObsTerm(func=mdp.joint_vel_rel, scale=0.05)
         actions = ObsTerm(func=mdp.last_action)
         base_height = ObsTerm(func=mdp.base_pos_z)
+        position_error = None
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
@@ -294,5 +297,37 @@ class BalanceBotEnvCfg_PLAY(BalanceBotEnvCfg):
         self.scene.num_envs = 32
         self.scene.env_spacing = 1.5
         # disable randomization for play
+        self.observations.policy.enable_corruption = False
+        self.events.push_robot = None
+
+
+@configclass
+class BalanceBotHoldEnvCfg(BalanceBotEnvCfg):
+    """Raw throttle (duty) policy that also holds its position.
+
+    smooth6's settings (duty output, 5-80 ms delay, wheel drag up to 0.6 N m for carpet, pitch_rate -0.6,
+    action_rate -1.0) plus one more observation, the distance behind / ahead of the forward command from wheel
+    odometry (``PositionError``, appended after the last actions), and a reward for keeping it small. The robot's
+    policy node detects the extra input from the policy's input size.
+    """
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.wheel_vel.control = "duty"
+        self.actions.wheel_vel.delay_range = (1, 16)
+        self.actions.wheel_vel.drive.friction_range = (0.0, 0.6)
+        self.rewards.pitch_rate.weight = -0.6
+        self.rewards.action_rate.weight = -1.0
+        self.observations.policy.position_error = ObsTerm(func=mdp.PositionError, params={"limit": 0.5})
+        self.observations.critic.position_error = ObsTerm(func=mdp.position_error_state, params={"limit": 0.5})
+        self.rewards.position_hold = RewTerm(func=mdp.position_hold_exp, weight=2.0, params={"std": 0.1})
+
+
+@configclass
+class BalanceBotHoldEnvCfg_PLAY(BalanceBotHoldEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 32
+        self.scene.env_spacing = 1.5
         self.observations.policy.enable_corruption = False
         self.events.push_robot = None

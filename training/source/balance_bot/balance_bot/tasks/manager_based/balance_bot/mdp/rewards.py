@@ -73,3 +73,14 @@ def pitch_rate_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntit
     """Penalize rocking back and forth: the angular velocity about the wheel axle (base x-axis)."""
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.square(asset.data.root_ang_vel_b[:, 0])
+
+
+def position_hold_exp(
+    env: ManagerBasedRLEnv, std: float, gate_threshold: float = 0.8, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Stay where the forward command says the robot should be (``env.position_error`` from the PositionError
+    observation): at zero command, hold the spot; while driving, do not fall behind or run ahead."""
+    error = getattr(env, "position_error", None)
+    if error is None:
+        return torch.zeros(env.num_envs, device=env.device)
+    return torch.exp(-torch.square(error) / std**2) * upright_gate(env, gate_threshold, asset_cfg)
