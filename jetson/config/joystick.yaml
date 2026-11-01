@@ -1,34 +1,9 @@
-# PS4 controller (DualShock 4, paired over Bluetooth on the robot computer): ROS parameters of the joystick
-# container. Edit and restart:  docker compose restart joystick
+# PS4 controller: Circle / Cross start / stop balancing (joy_enable). Edit and restart:  docker compose restart joystick
 #
-# Button / axis numbers are for the Linux hid_playstation driver as seen by joy_node. Check yours with
-#   docker compose exec joystick ros2 topic echo /joy
-# PS4 buttons: 0 Cross, 1 Circle, 2 Triangle, 3 Square, 4 L1, 5 R1, 6 L2, 7 R2, 8 Share, 9 Options, 10 PS, 11 L3, 12 R3
-# PS4 axes:    0 left stick left/right, 1 left stick up/down, 2 L2, 3 right stick left/right, 4 right stick up/down,
-#              5 R2, 6 d-pad left/right, 7 d-pad up/down  (sticks: up / left = +1)
-
-joy_node:
-  ros__parameters:
-    device_id: 0                 # first gamepad (it may also be connected after boot: joy_node picks it up)
-    deadzone: 0.15               # fraction of stick travel ignored around centre (stick drift); raise if it still creeps
-    autorepeat_rate: 20.0        # Hz, keeps /joy (and /cmd_vel) flowing while the sticks are held still
-
-teleop_twist_joy_node:
-  ros__parameters:
-    # dead-man: the sticks only drive while R2 (right trigger, digital button) is held; releasing it sends one
-    # zero command and the robot stops and stands. Balancing itself is switched with Circle / Cross.
-    require_enable_button: true
-    enable_button: 7             # R2
-    enable_turbo_button: -1      # off: teleop_twist_joy's turbo would drive without the dead-man
-    axis_linear:
-      x: 1                       # left stick up/down: forward / back
-    scale_linear:
-      x: 0.5                     # m/s at full stick
-    axis_angular:
-      yaw: 3                     # right stick left/right: turn
-    scale_angular:
-      yaw: 1.5                   # rad/s at full stick
-    publish_stamped_twist: false # policy_node takes geometry_msgs/Twist on /cmd_vel
+# Driving uses teleop_twist_joy's standard settings (its ps3 config, as  ros2 launch teleop_twist_joy teleop-launch.py):
+#   hold the enable button (button 8) and use the LEFT stick: up / down = forward / back (0.7 m/s),
+#   left / right = turn (0.4 rad/s); also hold button 10 for turbo (1.5 m/s). joy_node dead zone 0.3.
+# Check button numbers with:  docker compose exec joystick ros2 topic echo /joy
 
 joy_enable:
   ros__parameters:

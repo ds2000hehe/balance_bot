@@ -29,7 +29,7 @@ The IMU driver is not in the containers: run it as before (on the host or as ano
 |---|---|
 | `.env` | `SERIAL_PORT` (Arduino USB port), `BAUD`, `MODE` (`balance` / `wheel_test` / `bridge`), `POLICY_NAME`, `ROS_DOMAIN_ID`, `RMW_IMPLEMENTATION` |
 | `config/robot.yaml` | topics (`imu_topic`, `cmd_vel_topic`, ...), IMU mounting (`imu_to_body`), `wheel_signs`, speed limits, drift correction, `start_enabled`; `wheel_teleop` section for `MODE=wheel_test` (`track_width`) |
-| `config/joystick.yaml` | PS4 controller: start / stop buttons, dead-man button, which sticks drive and turn, speeds |
+| `config/joystick.yaml` | PS4 controller: start / stop balancing buttons (driving: teleop_twist_joy standard ps3 settings) |
 | `policies/<name>/policy.onnx` | the policy library, see [policies/README.md](policies/README.md). `add_policy.sh` adds a training run |
 
 ## Install (once, on the robot computer)
@@ -109,11 +109,13 @@ With `start_enabled: false` (the default) the robot does nothing after boot unti
 | **PS** | connect the controller (after boot, or after it went to sleep) |
 | **Circle** | start balancing. From lying on its front or back the robot gets up by itself |
 | **Cross** | stop: motors off, **the robot falls over** (hold it, or stop near the ground) |
-| hold **R2** | dead-man: the sticks only drive while R2 is held. Release it and the robot stops and stands |
-| left stick up / down (with R2) | forward / back (0.5 m/s at full stick) |
-| right stick left / right (with R2) | turn (1.5 rad/s) |
+| hold the **enable button** (button 8) | dead-man: the stick only drives while it is held. Release it and the robot stops and stands |
+| left stick up / down (while enabled) | forward / back (0.7 m/s at full stick) |
+| left stick left / right (while enabled) | turn (0.4 rad/s) |
+| also hold button 10 | turbo (1.5 m/s) |
 
-Speeds: `scale_linear` / `scale_angular` in `config/joystick.yaml` (the policy is trained up to 1.5 m/s, 2 rad/s).
+Driving uses teleop_twist_joy's standard settings (its `ps3` config, the same as
+`ros2 launch teleop_twist_joy teleop-launch.py`); `config/joystick.yaml` only sets the Circle / Cross buttons.
 
 If the controller disconnects (flat battery, out of range), the robot keeps balancing in place: `/cmd_vel` goes
 quiet and the policy ramps its command to zero within a second. Reconnect with PS and press Cross to stop.
