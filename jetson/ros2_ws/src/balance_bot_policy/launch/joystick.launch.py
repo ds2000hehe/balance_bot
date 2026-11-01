@@ -1,6 +1,7 @@
 """PS4 controller: joy_node (gamepad -> /joy) and teleop_twist_joy (sticks -> /cmd_vel) with the teleop_twist_joy
 package's standard settings (same as ``ros2 launch teleop_twist_joy teleop-launch.py``, ps3 config), plus joy_enable
-(Circle -> start balancing, Cross -> stop) configured by ``params_file`` (default config/joystick.yaml).
+(Circle -> start balancing, Cross -> stop). ``params_file`` (default config/joystick.yaml) configures joy_enable and
+overrides individual teleop_twist_joy settings (enable button).
 """
 
 import os
@@ -31,7 +32,7 @@ def generate_launch_description():
                 executable="teleop_node",
                 name="teleop_twist_joy_node",
                 output="screen",
-                parameters=[teleop_config, {"publish_stamped_twist": False}],
+                parameters=[teleop_config, params, {"publish_stamped_twist": False}],
             ),
             Node(
                 package="balance_bot_policy",
