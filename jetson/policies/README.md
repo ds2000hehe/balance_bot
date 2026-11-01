@@ -16,8 +16,9 @@ Wobble = pitch-rate std in Isaac Lab (256 robots, measured ZS-X11H dead zone), l
 
 | Name | Training run | Wobble standing / driving | Speed error | Notes |
 |---|---|---|---|---|
+| `smooth6` | `2026-11-01_12-28-45_smooth6_robust` | see below | see below | **default**. Like `smooth4_duty` (raw throttle, params.yaml), trained for 5-80 ms control delay (was 5-40), wheel drag up to 0.6 N m (carpet), pitch_rate -0.6, action_rate -1.0. In Isaac: calmer than smooth4_duty at 60-80 ms delay, worse at 20-40 ms |
 | `smooth4_duty` | `2026-11-01_10-33-48_smooth4_duty` | see below | see below | Like `smooth3`, but outputs raw throttle (`output_mode: duty`, set by its params.yaml): no Arduino PI loop on the coarse speed pulses. Balance only |
-| `smooth3` | `2026-10-30_23-12-57_smooth3` | see below | see below | **default**. Balance only (does not stand up, follows speed commands poorly), trained on the realistic model: SC speed pulses without direction, firmware slew / safe reversal, gyro+accel tilt filter with mount error and bias, 5-40 ms delay, falls end at 30 deg. Stronger smoothness penalties (pitch_rate -0.3, action_rate -0.6, wheel_acc -2e-6) |
+| `smooth3` | `2026-10-30_23-12-57_smooth3` | see below | see below | Balance only (does not stand up, follows speed commands poorly), trained on the realistic model: SC speed pulses without direction, firmware slew / safe reversal, gyro+accel tilt filter with mount error and bias, 5-40 ms delay, falls end at 30 deg. Stronger smoothness penalties (pitch_rate -0.3, action_rate -0.6, wheel_acc -2e-6) |
 | `smooth2` | `2026-10-25_23-20-18_smooth2` | **0.25** / **0.37** rad/s | 0.082 m/s | From scratch, stronger smoothness penalties (action_rate -0.3, pitch_rate -0.15). Sometimes cannot get up from lying flat (~7% in Isaac, seen once in the sim test): stand it up by hand |
 | `scratch` | `2026-10-25_13-47-08_scratch` | 0.38 / 0.45 rad/s | **0.071** m/s | from scratch, original penalties: tracks speed best, wobbles more, always gets up from lying flat |
 | `pwm_dir` | `2026-10-25_11-45-12_pwm_dir` | 0.35 / 0.45 rad/s | 0.119 m/s | fine-tuned through all earlier drive models: falls least when pushed, tracks speed worst |
@@ -38,3 +39,12 @@ pushes, drive = random commands with pushes; a fall = tilt beyond 30 deg):
 | `smooth4_duty` | **8%** / **18%** | **0.31** / **0.35** rad/s | **0.86** deg | **18** rad/s2 | 0.84 m/s |
 
 A policy folder may hold a `params.yaml`: its values override `config/robot.yaml` for that policy (entrypoint.sh).
+
+Standing, fixed control delay (rocking rad/s / falls):
+
+| delay | `smooth4_duty` | `smooth6` |
+|---|---|---|
+| 20 ms | **0.33** / **10%** | 0.39 / 14% |
+| 40 ms | **0.41** / **20%** | 0.46 / 27% |
+| 60 ms | 0.61 / **30%** | **0.50** / 40% |
+| 80 ms | 1.09 / 49% | **0.62** / 46% |
