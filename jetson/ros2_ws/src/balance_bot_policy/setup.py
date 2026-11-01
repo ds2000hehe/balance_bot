@@ -26,7 +26,8 @@ setup(
             "teleop_key = balance_bot_policy.teleop_key:main",
             "wheel_serial_bridge = balance_bot_policy.wheel_serial_bridge:main",
             "wheel_check = balance_bot_policy.wheel_check:main",
-            "joy_enable = balance_bot_policy.joy_enable:main",
+            "joy_teleop = balance_bot_policy.joy_teleop:main",
+            "joy_calibrate = balance_bot_policy.joy_calibrate:main",
         ],
     },
 )

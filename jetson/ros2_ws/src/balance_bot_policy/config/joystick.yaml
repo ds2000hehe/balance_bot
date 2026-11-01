@@ -1,37 +1,35 @@
-# PS4 controller defaults for joystick.launch.py (the robot container uses jetson/config/joystick.yaml).
+# Gamepad defaults for joystick.launch.py (the robot container uses jetson/config/joystick.yaml).
 #
-# Button / axis numbers are for the Linux hid_playstation driver as seen by joy_node. Check yours with
-#   docker compose exec joystick ros2 topic echo /joy
-# PS4 buttons: 0 Cross, 1 Circle, 2 Triangle, 3 Square, 4 L1, 5 R1, 6 L2, 7 R2, 8 Share, 9 Options, 10 PS, 11 L3, 12 R3
-# PS4 axes:    0 left stick left/right, 1 left stick up/down, 2 L2, 3 right stick left/right, 4 right stick up/down,
-#              5 R2, 6 d-pad left/right, 7 d-pad up/down  (sticks: up / left = +1)
+# Axis / button NUMBERS are not set here: they depend on the driver, so measure them once with
+#   docker compose exec -it joystick ros2 run balance_bot_policy joy_calibrate
+# which writes joystick_map.yaml next to this file (loaded on top of it). The numbers below are only fallbacks.
+# Check what the controller sends:  docker compose exec joystick ros2 topic echo /joy
 
 joy_node:
   ros__parameters:
     device_id: 0                 # first gamepad (it may also be connected after boot: joy_node picks it up)
-    deadzone: 0.15
-    autorepeat_rate: 20.0        # Hz, keeps /joy (and /cmd_vel) flowing while the sticks are held still
+    deadzone: 0.0                # joy_teleop applies its own stick dead zone (a joy_node dead zone also hits triggers)
+    autorepeat_rate: 20.0        # Hz, keeps /joy flowing while nothing changes (joy_teleop stops on silence)
 
-teleop_twist_joy_node:
+joy_teleop:
   ros__parameters:
-    # dead-man: the sticks only drive while R2 (right trigger, digital button) is held; releasing it sends one
-    # zero command and the robot stops and stands. Balancing itself is switched with Circle / Cross.
-    require_enable_button: true
-    enable_button: 7             # R2
-    enable_turbo_button: -1      # off: teleop_twist_joy's turbo would drive without the dead-man
-    axis_linear:
-      x: 1                       # left stick up/down: forward / back
-    scale_linear:
-      x: 0.5                     # m/s at full stick
-    axis_angular:
-      yaw: 3                     # right stick left/right: turn
-    scale_angular:
-      yaw: 1.5                   # rad/s at full stick
-    publish_stamped_twist: false # policy_node takes geometry_msgs/Twist on /cmd_vel
-
-joy_enable:
-  ros__parameters:
-    start_button: 1              # Circle: start balancing (from lying down it gets up by itself)
-    stop_button: 0               # Cross: stop (motors off: the robot falls over)
-    joy_topic: "/joy"
+    # driving: the sticks only drive while R2 (dead-man) is held; releasing it sends one zero command and the
+    # robot stops and stands. Circle starts balancing, Cross stops it (motors off: the robot falls over).
+    forward_scale: 0.5           # m/s at full left stick up
+    turn_scale: 1.5              # rad/s at full right stick sideways
+    stick_deadzone: 0.15         # fraction of stick travel ignored around centre (stick drift); raise if it creeps
+    publish_rate: 20.0           # Hz of /cmd_vel while R2 is held
+    joy_timeout: 0.5             # s without /joy (controller gone) -> zero command
+    cmd_vel_topic: "/cmd_vel"
     enable_topic: "/balance_bot/enable"
+    # fallbacks until joy_calibrate has run (SDL game-controller order)
+    forward_axis: 1
+    forward_sign: -1.0
+    turn_axis: 2
+    turn_sign: -1.0
+    deadman_button: -1
+    deadman_axis: 5
+    deadman_rest: 1.0
+    deadman_pressed: -1.0
+    start_button: 1
+    stop_button: 0

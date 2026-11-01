@@ -66,7 +66,7 @@ services:
       # picked up); there is no udev daemon in the container
       SDL_JOYSTICK_DISABLE_UDEV: "1"
     volumes:
-      - ./config:/config:ro
+      - ./config:/config    # writable: joy_calibrate writes joystick_map.yaml
       # the whole directory (not single devices) so the controller can connect and disconnect at any time
       - /dev/input:/dev/input
     # allow input devices only (/dev/input/js*, event*: major 13)

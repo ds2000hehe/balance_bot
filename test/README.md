@@ -9,8 +9,8 @@ Isaac Sim (sim/sim_bridge.py) ──/imu, /wheel_vel──► policy_node ──
                          keyboard teleop or PS4 ──/cmd_vel
 ```
 
-Needs this PC's setup: Isaac Lab in `~/IsaacLab`, ROS 2 Jazzy in `/opt/ros/jazzy`, `ros-jazzy-joy` and
-`ros-jazzy-teleop-twist-joy` for `--joy`.
+Needs this PC's setup: Isaac Lab in `~/IsaacLab`, ROS 2 Jazzy in `/opt/ros/jazzy`, `ros-jazzy-joy` for
+`--joy`.
 
 ```bash
 test/run_sim_test.sh                    # policy POLICY_NAME from jetson/.env, keyboard teleop

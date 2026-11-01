@@ -16,7 +16,6 @@
   <exec_depend>python3-yaml</exec_depend>
   <!-- PS4 controller (joystick.launch.py) -->
   <exec_depend>joy</exec_depend>
-  <exec_depend>teleop_twist_joy</exec_depend>
   <!-- robot.launch.py mode:=wheel_test -->
   <exec_depend>balance_bot_wheel_teleop</exec_depend>
 
