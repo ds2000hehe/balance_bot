@@ -70,6 +70,9 @@ class PolicyNode(Node):
         self.use_imu_orientation = p("use_imu_orientation", True).value
         self.gravity_filter_tau = p("gravity_filter_tau", 0.5).value
         self.wheel_signs = np.array(p("wheel_signs", [1.0, 1.0]).value)
+        # true: the wheel topics' [left, right] are the robot's right / left wheel (swaps both the measured speeds and
+        # the commands). Use when the robot spins on the spot by itself: its turning (gyro yaw) and the wheels disagree
+        self.swap_wheels = bool(p("swap_wheels", False).value)
         # tilt cut-off: beyond max_tilt_deg the motors are switched off (zero duty, the wheels coast). The training ends
         # episodes at 30 deg, so between 30 deg and the cut-off the policy is outside what it learned. It resumes after
         # being held within resume_tilt_deg for resume_hold_s
@@ -212,10 +215,14 @@ class PolicyNode(Node):
         is the robot's left wheel and turns negative when driving forward.
         """
         forward = topic * self.wheel_signs
+        if self.swap_wheels:
+            forward = forward[::-1]
         return np.array([forward[1], -forward[0]])
 
     def _sim_to_topic(self, sim: np.ndarray) -> np.ndarray:
         forward = np.array([-sim[1], sim[0]])
+        if self.swap_wheels:
+            forward = forward[::-1]
         return forward * self.wheel_signs
 
     def _forward_speed(self) -> float:

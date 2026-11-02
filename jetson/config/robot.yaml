@@ -35,6 +35,7 @@ balance_bot_policy:
     # Wheel topics are [left, right] seen from behind the robot. +1 = positive speed drives the robot forward
     # on that wheel, -1 = the Arduino uses the opposite sign for that wheel.
     wheel_signs: [1.0, 1.0]
+    swap_wheels: true                      # left / right swapped vs the gyro (robot spun on the spot, 2026-11-02 spin bag)
 
     # "speed": wheel speed targets for the ESP32's speed loop (/wheel_cmd -> "V"). "duty": motor duty directly
     # (/wheel_duty -> "D", duty = action x action_scale / motor_max_rad_s). Must match the policy's training
