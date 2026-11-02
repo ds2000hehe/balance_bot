@@ -7,22 +7,6 @@ wheel_serial_bridge:
     wheel_cmd_topic: "/wheel_cmd"          # wheel speed targets [left, right] rad/s -> ESP32
     wheel_state_topic: "/wheel_vel"        # measured wheel speeds [left, right] rad/s <- ESP32
     wheel_duty_topic: "/wheel_duty"        # motor duty [left, right] in [-1, 1] -> ESP32 "D" (policy, wheel_check)
-    # firmware PI speed loop (speed mode only), sent as "G kp ki": gain = speed_* x *_scale. Live:
-    #   ros2 param set /wheel_serial_bridge ki_scale 1.5      (write 1.0, 2.0: decimals, not 1, 2)
-    send_on_start: false                   # true: send the settings below at every controller start; false: firmware
-                                           # defaults (sent only when changed live)
-    speed_kp: 0.01                         # sketch default
-    speed_ki: 0.2                          # sketch default
-    kp_scale: 1.0
-    ki_scale: 1.0
-    # firmware brake (ZS-X11H BRAKE on A4 / A5): brakes when the throttle asks for less speed than the wheel turns,
-    # only above brake_min_rad_s (below it the firmware can reverse instead). Live:
-    #   ros2 param set /wheel_serial_bridge auto_brake false
-    auto_brake: false                      # firmware brake removed (ZS-X11H BRAKE reacts ~150-200 ms late)
-    brake_min_rad_s: 3.0
-    brake_gain_left: 1.0                   # from motor_test.py brakecal (makes both wheels brake the same)
-    brake_gain_right: 1.0
-    brake_pwm_hz: 200.0                    # BRAKE pulse rate, from motor_test.py brakecal
 
 balance_bot_policy:
   ros__parameters:
@@ -49,7 +33,7 @@ balance_bot_policy:
     gravity_filter_tau: 0.5                # s, accelerometer time constant of the tilt filter (= training FilteredGravity tau)
     pitch_trim_deg: 0.0                    # deg: the lean ("lean fwd" in the log) at which the robot really balances;
                                            # measure: robot disabled, hold it on its wheels where it balances by itself
-    step_on_imu: false                     # run the policy when a fresh IMU sample arrives (less delay than a timer)
+    step_on_imu: true                      # run the policy when a fresh IMU sample arrives (less delay than a timer)
 
     # Wheel topics are [left, right] seen from behind the robot. +1 = positive speed drives the robot forward
     # on that wheel, -1 = the Arduino uses the opposite sign for that wheel.
