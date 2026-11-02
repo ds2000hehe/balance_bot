@@ -28,7 +28,6 @@ setup(
             "wheel_check = balance_bot_policy.wheel_check:main",
             "joy_enable = balance_bot_policy.joy_enable:main",
             "latency_check = balance_bot_policy.latency_check:main",
-            "brake_check = balance_bot_policy.brake_check:main",
         ],
     },
 )

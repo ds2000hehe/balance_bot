@@ -82,6 +82,10 @@ class HoverboardDriveCfg:
     policy wobbled more)."""
     friction_range: tuple[float, float] = (0.0, 0.3)
     """Coulomb friction of the hub motor [N m]."""
+    regen_braking: bool = True
+    """True: the driver also drives current against the wheel (lowering the throttle below the wheel's speed brakes
+    it). False: current only flows in the throttle's direction; a wheel faster than the throttle asks for coasts
+    (measured on the robot: the ZS-X11H freewheels, braking only comes from reversing)."""
 
 
 class HoverboardDrive:
@@ -262,5 +266,7 @@ class HoverboardDrive:
         current = (duty * self.voltage - self.ke * omega) / self.resistance
         current = torch.clamp(current, -self.current_limit, self.current_limit)
         current = torch.where(on, current, torch.zeros_like(current))
+        if not self.cfg.regen_braking:
+            current = torch.where(current * torch.sign(duty) < 0.0, torch.zeros_like(current), current)
         friction = self.friction * torch.tanh(omega / 0.5)
         return self.ke * current - friction
