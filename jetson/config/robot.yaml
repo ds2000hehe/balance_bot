@@ -16,7 +16,7 @@ wheel_serial_bridge:
     # firmware brake (ZS-X11H BRAKE on A4 / A5): brakes when the throttle asks for less speed than the wheel turns,
     # only above brake_min_rad_s (below it the firmware can reverse instead). Live:
     #   ros2 param set /wheel_serial_bridge auto_brake false
-    auto_brake: true
+    auto_brake: false                      # firmware brake removed (ZS-X11H BRAKE reacts ~150-200 ms late)
     brake_min_rad_s: 3.0
     brake_gain_left: 1.0                   # from motor_test.py brakecal (makes both wheels brake the same)
     brake_gain_right: 1.0
