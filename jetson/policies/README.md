@@ -16,6 +16,8 @@ Wobble = pitch-rate std in Isaac Lab (256 robots, measured ZS-X11H dead zone), l
 
 | Name | Training run | Wobble standing / driving | Speed error | Notes |
 |---|---|---|---|---|
+| `smooth15` | `2026-11-02_10-54-54_smooth15_duty_2kg_100hz` | see below | see below | `smooth14` at **100 Hz** (params.yaml: duty, control_rate 100; needs the IMU at >= 100 Hz). Task Template-Balance-Bot-Duty2kg-Fast-v0. In Isaac at 40-50 ms delay: best push recovery of the duty policies (1 m/s push fwd / back: 10 / 21 % falls), brakes from 1 m/s with 7 / 4 % falls |
+| `smooth14` | `2026-11-02_10-35-30_smooth14_duty_2kg` | see below | see below | From scratch: `smooth4_duty` (raw throttle, action scale 30) with the real 2 kg body (1.4-2.8 kg) and 15-50 ms delay (measured ~45 ms). Task Template-Balance-Bot-Duty2kg-v0. In Isaac: calmest driving (rock 0.11-0.15 rad/s), but falls on most 1 m/s pushes (55 / 97 %) |
 | `smooth12` | `2026-11-02_09-48-18_smooth12_speed_2kg` | see below | see below | Back to `smooth3`'s setup (wheel speed targets through the Arduino PI loop, no params.yaml, 5-40 ms delay, pushes up to 0.4 m/s) with the real 2 kg body (1.4-2.8 kg) and centre of mass +-2 cm fwd / +-4 cm height. Task Template-Balance-Bot-RealMass-v0 before the push / delay change. In Isaac (2 kg physics): wanders less than smooth3 (0.68 vs 1.01 m), but falls on 87 % of 1 m/s forward pushes (smooth3 7 %), drives forward slower than commanded (0.37 of 0.5 m/s) |
 | `smooth11` | `2026-11-01_15-06-28_smooth11_2kg` | see below | see below | **default**. Task Template-Balance-Bot-Hold-v0: raw throttle with the full range (params.yaml: action_scale 68), holds its position (14th input: distance from wheel odometry, policy_node detects it), body mass corrected to the real 2 kg, wide randomization of centre of mass (+-2 cm fwd, +-4 cm height), inertia (0.7-1.5x), high tyre grip, pushes up to 1 m/s, episodes to 40 deg |
 | `smooth7` | `2026-11-01_13-12-11_smooth7_track` | see below | see below | `smooth6` with tighter speed tracking (track_lin_vel weight 3, std 0.15): wanders half as far standing, wobbles a bit more |
@@ -67,3 +69,13 @@ On the corrected physics (2 kg body, randomized centre of mass / inertia), falls
 |---|---|---|---|---|
 | `smooth6` | 0.90 / 1.74 m | 7.8% | 13% / 10% | 50% / 31% |
 | `smooth11` | **0.21 / 0.95 m** | **5.1%** | 11% / 13% | **31%** / 34% |
+
+Duty policies on the 2 kg body at the robot's measured delay (40-50 ms), 512 robots, fall = past 50 deg
+(scratchpad eval_speed.py; push = 1 m/s shove; brake = 1 m/s, then a stop command):
+
+| | stand: falls / wander | push fwd / back falls | drive rock | brake fwd / back: falls / stop distance |
+|---|---|---|---|---|
+| `smooth4_duty` | 7 % / 0.91 m | 10 / 43 % | 0.36 rad/s | 3 / 4 % , 2.7 / 2.5 m |
+| `smooth6` | 10 % / 0.80 m | 19 / 13 % | 0.23 rad/s | 10 / 11 % , 1.9 / 1.7 m |
+| `smooth14` | 4 % / 0.89 m | 55 / 97 % | 0.15 rad/s | 4 / 6 % , 2.5 / 1.9 m |
+| `smooth15` (100 Hz) | 6 % / 0.81 m | 10 / 21 % | 0.18 rad/s | 7 / 5 % , 1.9 / 2.0 m |
