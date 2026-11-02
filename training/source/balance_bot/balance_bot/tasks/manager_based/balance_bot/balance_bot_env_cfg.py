@@ -354,3 +354,34 @@ class BalanceBotHoldEnvCfg_PLAY(BalanceBotHoldEnvCfg):
         self.scene.env_spacing = 1.5
         self.observations.policy.enable_corruption = False
         self.events.push_robot = None
+
+
+@configclass
+class BalanceBotRealMassEnvCfg(BalanceBotEnvCfg):
+    """smooth3's setup (wheel speed targets through the firmware's PI speed loop, no raw throttle, 5-40 ms delay,
+    falls end at 30 deg) with the real robot's body: 2 kg instead of the model's 6 kg, and the centre of mass
+    randomized further forward / back and up / down (the real position is not known exactly).
+    """
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        # the model's two body parts are 3 kg each: set each to 0.7-1.4 kg (body 1.4-2.8 kg, real 2 kg)
+        self.events.add_body_mass.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["body", "mate_connector_1"])
+        self.events.add_body_mass.params["mass_distribution_params"] = (0.7, 1.4)
+        self.events.add_body_mass.params["operation"] = "abs"
+        # centre of mass: +-2 cm forward / back, +-4 cm height
+        self.events.body_com.params["com_range"] = {"x": (-0.01, 0.01), "y": (-0.02, 0.02), "z": (-0.04, 0.04)}
+        # forward / back pushes up to 1 m/s (with 0.4 m/s, smooth12 fell on 87 % of 1 m/s forward pushes), and
+        # delay up to 50 ms (measured on the robot: ~45 ms from command to gyro)
+        self.events.push_robot.params["velocity_range"] = {"x": (-0.3, 0.3), "y": (-1.0, 1.0)}
+        self.actions.wheel_vel.delay_range = (1, 10)
+
+
+@configclass
+class BalanceBotRealMassEnvCfg_PLAY(BalanceBotRealMassEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 32
+        self.scene.env_spacing = 1.5
+        self.observations.policy.enable_corruption = False
+        self.events.push_robot = None
