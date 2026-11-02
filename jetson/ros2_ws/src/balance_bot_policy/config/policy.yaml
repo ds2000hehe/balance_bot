@@ -24,7 +24,7 @@ balance_bot_policy:
     gravity_filter_tau: 0.5                # s, accelerometer time constant of the tilt filter (= training FilteredGravity tau)
     pitch_trim_deg: 0.0                    # deg: the lean ("lean fwd" in the log) at which the robot really balances;
                                            # measure: robot disabled, hold it on its wheels where it balances by itself
-    step_on_imu: true                      # run the policy when a fresh IMU sample arrives (less delay than a timer)
+    step_on_imu: false                     # run the policy when a fresh IMU sample arrives (less delay than a timer)
 
     # Wheel topics are [left, right] seen from behind the robot. +1 = positive speed drives the robot forward
     # on that wheel, -1 = the Arduino uses the opposite sign for that wheel.

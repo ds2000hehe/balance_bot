@@ -72,6 +72,9 @@ class WheelSerialBridge(Node):
         self.gains["brake_gain_left"] = knob("brake_gain_left", 1.0, 1.0, "left wheel automatic braking x this")
         self.gains["brake_pwm_hz"] = knob("brake_pwm_hz", 200.0, 2000.0, "BRAKE pulse rate [Hz] (motor_test.py brakecal)")
         self.gains["brake_gain_right"] = knob("brake_gain_right", 1.0, 1.0, "right wheel automatic braking x this")
+        # send the gains / brake settings when the controller starts (false: the firmware's own defaults; settings
+        # are still sent when changed live with ros2 param set)
+        self.send_on_start = bool(p("send_on_start", False).value)
         self.add_on_set_parameters_callback(self._on_params)
 
         self.send_after = 0.0
@@ -208,7 +211,8 @@ class WheelSerialBridge(Node):
                 self.get_logger().warn(f"unexpected line from the controller: {line[:60]!r}", throttle_duration_sec=5.0)
             if self.reporting and self.gains_pending and now >= self.send_after:
                 self.gains_pending = False
-                self._send_gains()
+                if self.send_on_start:
+                    self._send_gains()
             if now - self.last_report > self.boot_wait + 1.0:
                 self.reporting = False
                 self.get_logger().warn(
