@@ -492,3 +492,16 @@ class BalanceBotDuty2kgRevBrakeSmoothEnvCfg(BalanceBotDuty2kgRevBrakeEnvCfg):
         self.rewards.action_rate.weight = -1.0
         self.rewards.wheel_acc.weight = -4.0e-6
         self.rewards.track_lin_vel.weight = 3.0
+
+
+@configclass
+class BalanceBotDuty2kgRevBrakeEarlyEnvCfg(BalanceBotDuty2kgRevBrakeEnvCfg):
+    """Braking by reversal that starts sooner and builds up gently: from 1.5 rad/s too fast (was 5: dead zone, robot
+    tipped to -17 deg before braking, jolt bag 2026-11-02), pulsed (40 ms period, time on ~ excess), DIR hold 10 ms
+    (was 30). Firmware must match (REVERSE_BRAKE_MARGIN 1.5, REVERSE_BRAKE_PULSE_MS 40, DIR_MIN_HOLD_MS 10)."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.wheel_vel.drive.reverse_brake_margin = 1.5
+        self.actions.wheel_vel.drive.reverse_brake_pulse_s = 0.04
+        self.actions.wheel_vel.drive.dir_min_hold_s = 0.01
