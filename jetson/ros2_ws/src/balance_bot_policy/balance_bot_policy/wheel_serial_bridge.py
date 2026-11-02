@@ -30,6 +30,8 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from std_msgs.msg import Float32MultiArray
 
+from .serial_low_latency import set_low_latency_fd
+
 
 class WheelSerialBridge(Node):
     def __init__(self):
@@ -88,6 +90,12 @@ class WheelSerialBridge(Node):
         s.rts = False
         s.open()
         s.reset_input_buffer()
+        # USB serial adapters can hold received bytes up to 16 ms: hand them over at once (lost on replug: set again)
+        try:
+            ok = set_low_latency_fd(s.fileno())
+            self.get_logger().info(f"{self.port}: low latency {'on' if ok else 'not supported'}")
+        except OSError as e:
+            self.get_logger().info(f"{self.port}: low latency not supported ({e.strerror})")
         return s
 
     def _write(self, line: str):

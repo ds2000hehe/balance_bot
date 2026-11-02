@@ -43,6 +43,7 @@ services:
       <<: *ros-env
       SERIAL_PORT: ${SERIAL_PORT}
       BAUD: ${BAUD:-115200}
+      LOW_LATENCY_PORTS: ${LOW_LATENCY_PORTS:-all}
       MODE: ${MODE:-balance}
       POLICY_NAME: ${POLICY_NAME:-smooth2}
     volumes:

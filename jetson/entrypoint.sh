@@ -42,6 +42,14 @@ case "${1:-robot}" in
         ;;
 esac
 
+# USB serial ports (Arduino, serial IMU) in low-latency mode: received bytes are not held back up to 16 ms.
+# LOW_LATENCY_PORTS in .env: "all" (every ttyUSB* / ttyACM*), a list of ports, or "none"
+case "${LOW_LATENCY_PORTS:-all}" in
+    none) ;;
+    all) python3 -m balance_bot_policy.serial_low_latency || true ;;
+    *) python3 -m balance_bot_policy.serial_low_latency $LOW_LATENCY_PORTS || true ;;
+esac
+
 PARAMS=/config/robot.yaml
 [ -f "$PARAMS" ] || { echo "missing $PARAMS (mount jetson/config)"; exit 1; }
 MODE=${MODE:-balance}
