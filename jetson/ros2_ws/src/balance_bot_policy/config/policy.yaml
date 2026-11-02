@@ -27,6 +27,7 @@ balance_bot_policy:
     # on that wheel, -1 = the Arduino uses the opposite sign for that wheel.
     wheel_signs: [1.0, 1.0]
     swap_wheels: true                      # left / right swapped vs the gyro (robot spun on the spot, 2026-11-02 spin bag)
+    pitch_trim_deg: 5.0                    # deg: the robot balances ~5 deg forward of the IMU's vertical (bags 2026-11-02: 4.8 / 3.2 / 5.1)
 
     # "speed": wheel speed targets for the ESP32's speed loop (/wheel_cmd -> "V"). "duty": motor duty directly
     # (/wheel_duty -> "D", duty = action x action_scale / motor_max_rad_s). Must match the policy's training

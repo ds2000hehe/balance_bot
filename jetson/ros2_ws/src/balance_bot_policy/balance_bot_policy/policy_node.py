@@ -66,7 +66,14 @@ class PolicyNode(Node):
         # rotation (row-major 3x3) taking IMU-frame vectors into the robot body frame (x forward, y left, z up);
         # the default (identity) is for an IMU mounted with its axes along the robot's
         self.imu_to_body = np.array(p("imu_to_body", np.eye(3).flatten().tolist()).value).reshape(3, 3)
+        # tilt trim: the robot's real balance point leans pitch_trim_deg forward (centre of mass not over the axle, or
+        # the IMU mounted tilted). Rotating the measured gravity by it makes that lean read as upright, so the policy
+        # balances there instead of always pulling back towards the IMU's vertical. Read the lean in the log while it
+        # balances in place, or with the robot disabled ("disabled | lean fwd").
+        t = np.radians(p("pitch_trim_deg", 0.0).value)
+        trim = np.array([[np.cos(t), 0.0, np.sin(t)], [0.0, 1.0, 0.0], [-np.sin(t), 0.0, np.cos(t)]])
         self.imu_to_policy = BODY_TO_POLICY @ self.imu_to_body
+        self.gravity_imu_to_policy = BODY_TO_POLICY @ trim @ self.imu_to_body
         self.use_imu_orientation = p("use_imu_orientation", True).value
         self.gravity_filter_tau = p("gravity_filter_tau", 0.5).value
         self.wheel_signs = np.array(p("wheel_signs", [1.0, 1.0]).value)
@@ -248,6 +255,13 @@ class PolicyNode(Node):
         now = time.monotonic()
         if not self.enabled:
             self._motors_off()
+            if self.debug_period > 0.0 and self.gravity_imu is not None and now - self.last_debug >= self.debug_period:
+                self.last_debug = now
+                g_body = self.imu_to_body @ self.gravity_imu
+                self.get_logger().info(
+                    f"disabled | lean fwd {np.degrees(np.arcsin(np.clip(g_body[0], -1, 1))):+5.1f} deg (raw, for "
+                    f"pitch_trim_deg)"
+                )
             return
         if self.ang_vel_imu is None or now - self.imu_time > self.sensor_timeout:
             self.get_logger().warn("no recent IMU data, commanding zero wheel speed", throttle_duration_sec=1.0)
@@ -260,7 +274,7 @@ class PolicyNode(Node):
         # stop driving (but keep balancing) when cmd_vel goes quiet; ramp all command changes
         target = self.cmd if now - self.cmd_time < self.cmd_timeout else (0.0, 0.0)
         cmd_forward, cmd_yaw = self.cmd_smoother.update(target, 1.0 / self.rate)
-        gravity_policy = self.imu_to_policy @ self.gravity_imu
+        gravity_policy = self.gravity_imu_to_policy @ self.gravity_imu
         if self._tilt_cutoff(gravity_policy, now):
             self._motors_off()
             return
