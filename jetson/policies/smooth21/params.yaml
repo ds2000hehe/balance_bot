@@ -1,0 +1,3 @@
+# settings this policy needs on top of config/robot.yaml (entrypoint.sh merges them)
+output_mode: "duty"    # raw throttle ("D" commands)
+# NEEDS the firmware with braking by reversal (balance_bot_atmega: REVERSE_MAX_RAD_S 100, REVERSE_BRAKE true)

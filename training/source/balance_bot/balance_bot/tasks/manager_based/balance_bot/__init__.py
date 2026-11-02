@@ -131,3 +131,43 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BalanceBotPPORunnerCfg",
     },
 )
+
+gym.register(
+    id="Template-Balance-Bot-Duty2kg-CoastSlow-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.balance_bot_env_cfg:BalanceBotDuty2kgCoastSlowEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BalanceBotPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Template-Balance-Bot-Duty2kg-Reverse-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.balance_bot_env_cfg:BalanceBotDuty2kgReverseEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BalanceBotPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Template-Balance-Bot-Duty2kg-Reverse-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.balance_bot_env_cfg:BalanceBotDuty2kgReverseEnvCfg_PLAY",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BalanceBotPPORunnerCfg",
+    },
+)
+
+gym.register(
+    id="Template-Balance-Bot-Duty2kg-RevBrake-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.balance_bot_env_cfg:BalanceBotDuty2kgRevBrakeEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:BalanceBotPPORunnerCfg",
+    },
+)

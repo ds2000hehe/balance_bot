@@ -82,6 +82,17 @@ class HoverboardDriveCfg:
     policy wobbled more)."""
     friction_range: tuple[float, float] = (0.0, 0.3)
     """Coulomb friction of the hub motor [N m]."""
+    reverse_brake: bool = False
+    """Firmware braking by reversal (raw duty mode): when the wheel turns faster than the throttle asks for (by more
+    than ``reverse_brake_margin``), the firmware reverses it with a throttle of
+    ``reverse_brake_gain * excess / max_rad_s`` (at most ``reverse_brake_max``) until it is down to the throttle's
+    speed. Gives drivers that only coast (``regen_braking`` False) the braking a regenerating driver has."""
+    reverse_brake_gain: float = 1.0
+    reverse_brake_max: float = 0.15
+    reverse_brake_margin: float = 1.0
+    """rad/s: start braking when the wheel is this much faster than the throttle's speed; stop at the throttle's speed."""
+    reverse_brake_min: float = 1.5
+    """rad/s: no braking below this measured speed (coarse speed pulses)."""
     regen_braking: bool = True
     """True: the driver also drives current against the wheel (lowering the throttle below the wheel's speed brakes
     it). False: current only flows in the throttle's direction; a wheel faster than the throttle asks for coasts
@@ -110,6 +121,8 @@ class HoverboardDrive:
         self.dir_sign = torch.ones(shape, device=device)  # direction DIR selects: +1 / -1
         self.dir_change_t = zeros()
         self.applied_duty = zeros()
+        self.braking = torch.zeros(shape, dtype=torch.bool, device=device)  # reverse_brake active
+        self.brake_dir = torch.ones(shape, device=device)  # direction the wheel was turning when braking started
         self.initialized = torch.zeros(num_envs, dtype=torch.bool, device=device)
         # randomized parameters
         self.edge_offset = torch.zeros(num_envs, num_wheels, 6, device=device)  # hall edge position within a count
@@ -138,6 +151,8 @@ class HoverboardDrive:
         self.dir_sign[env_ids] = 1.0
         self.dir_change_t[env_ids] = -1.0
         self.applied_duty[env_ids] = 0.0
+        self.braking[env_ids] = False
+        self.brake_dir[env_ids] = 1.0
         self.last_dir[env_ids] = 0
         self.time[env_ids] = 0.0
         self.initialized[env_ids] = False
@@ -234,8 +249,27 @@ class HoverboardDrive:
     def open_loop_torque(self, duty: torch.Tensor, omega: torch.Tensor, dt: float) -> torch.Tensor:
         """Wheel torque for a raw duty (the firmware's "D" command; 0 = output off, the wheel coasts)."""
         self.integral.zero_()
-        applied, _ = self.output_stage(torch.clamp(duty, -1.0, 1.0), dt)
+        duty = torch.clamp(duty, -1.0, 1.0)
+        if self.cfg.reverse_brake:
+            duty = self.reverse_brake(duty)
+        applied, _ = self.output_stage(duty, dt)
         return self.driver_torque(applied, omega)
+
+    def reverse_brake(self, duty: torch.Tensor) -> torch.Tensor:
+        """Firmware braking by reversal (see ``reverse_brake`` in the config): returns the duty to apply."""
+        c = self.cfg
+        speed = self.velocity.abs()  # the speed pulses' magnitude does not depend on DIR
+        # direction of motion: DIR while driving; while braking (DIR reversed) the direction braking started in
+        motion = torch.where(self.braking, self.brake_dir, self.dir_sign)
+        along = duty * motion  # throttle in the direction of motion (< 0: the policy itself asks for reverse)
+        target = along.clamp(min=0.0) * c.max_rad_s
+        excess = speed - target
+        start = ~self.braking & (along >= 0) & (excess > c.reverse_brake_margin) & (speed > c.reverse_brake_min)
+        keep = self.braking & (along >= 0) & (excess > 0.0) & (speed > c.reverse_brake_min)
+        self.brake_dir = torch.where(start, self.dir_sign, self.brake_dir)
+        self.braking = start | keep
+        brake = (c.reverse_brake_gain * excess / c.max_rad_s).clamp(0.0, c.reverse_brake_max)
+        return torch.where(self.braking, -self.brake_dir * brake, duty)
 
     def output_stage(self, duty: torch.Tensor, dt: float) -> tuple[torch.Tensor, torch.Tensor]:
         """The firmware's output protection (driveMotor): returns the duty actually applied and where it was held

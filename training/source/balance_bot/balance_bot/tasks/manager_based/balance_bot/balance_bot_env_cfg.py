@@ -432,3 +432,50 @@ class BalanceBotDuty2kgCoastEnvCfg(BalanceBotDuty2kgEnvCfg):
         super().__post_init__()
         self.actions.wheel_vel.drive.regen_braking = False
         self.commands.base_velocity.resampling_time_range = (2.0, 5.0)
+
+
+@configclass
+class BalanceBotDuty2kgCoastSlowEnvCfg(BalanceBotDuty2kgCoastEnvCfg):
+    """smooth17 (drivers that only coast, reversing below 3 rad/s) with speed commands up to 0.5 m/s: a range a robot
+    that cannot brake can stop from (smooth17, trained to 1.5 m/s, fell in 44 % of episodes)."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.5, 0.5)
+
+
+@configclass
+class BalanceBotDuty2kgReverseEnvCfg(BalanceBotDuty2kgEnvCfg):
+    """smooth14 with the drivers as measured on the robot (2026-11-02): lowering the throttle lets the wheel coast
+    (no braking, bags), but reversing brakes hard at any speed (reverse_test: half speed in 13-31 ms from 20 rad/s,
+    coasting 220-250 ms). Firmware: REVERSE_MAX_RAD_S raised above top speed (no reversal block)."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.wheel_vel.drive.regen_braking = False
+        self.actions.wheel_vel.drive.reverse_max_rad_s = 100.0
+        self.commands.base_velocity.resampling_time_range = (2.0, 5.0)  # practise stops
+
+
+@configclass
+class BalanceBotDuty2kgReverseEnvCfg_PLAY(BalanceBotDuty2kgReverseEnvCfg):
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.scene.num_envs = 32
+        self.observations.policy.enable_corruption = False
+        self.events.push_robot = None
+
+
+@configclass
+class BalanceBotDuty2kgRevBrakeEnvCfg(BalanceBotDuty2kgReverseEnvCfg):
+    """The drivers as measured (lowering the throttle coasts, reversing brakes hard at any speed) plus the firmware
+    braking by reversal (``reverse_brake``): a wheel faster than the throttle asks for is reversed until it is down
+    to that speed, which gives back the braking smooth14 was trained with."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.wheel_vel.drive.reverse_brake = True
+        # gentlest setting that helped smooth14 most in Isaac (stop falls 63 -> 47 %)
+        self.actions.wheel_vel.drive.reverse_brake_margin = 5.0
+        self.actions.wheel_vel.drive.reverse_brake_gain = 0.5
+        self.actions.wheel_vel.drive.reverse_brake_max = 0.08
