@@ -91,6 +91,11 @@ class HoverboardDriveCfg:
     reverse_brake_max: float = 0.15
     reverse_brake_margin: float = 1.0
     """rad/s: start braking when the wheel is this much faster than the throttle's speed; stop at the throttle's speed."""
+    reverse_brake_pulse_s: float = 0.0
+    """> 0: pulsed braking. The reversed throttle is on for a fraction of each pulse period (this many s), the wheel
+    coasts the rest; fraction = ``reverse_brake_gain * excess / max_rad_s / reverse_brake_max`` (0-1), throttle
+    ``reverse_brake_max`` while on. The drivers brake about equally hard at any reverse throttle, so the time on is
+    what sets the braking strength. 0: continuous (throttle proportional)."""
     reverse_brake_min: float = 1.5
     """rad/s: no braking below this measured speed (coarse speed pulses)."""
     regen_braking: bool = True
@@ -269,6 +274,12 @@ class HoverboardDrive:
         self.brake_dir = torch.where(start, self.dir_sign, self.brake_dir)
         self.braking = start | keep
         brake = (c.reverse_brake_gain * excess / c.max_rad_s).clamp(0.0, c.reverse_brake_max)
+        if c.reverse_brake_pulse_s > 0.0:
+            fraction = brake / c.reverse_brake_max
+            phase = torch.remainder(self.time.expand_as(duty), c.reverse_brake_pulse_s) / c.reverse_brake_pulse_s
+            brake = torch.where(phase < fraction, torch.full_like(brake, c.reverse_brake_max), torch.zeros_like(brake))
+            # off phase: keep DIR reversed with the throttle at 0 (coast), no DIR chatter
+            return torch.where(self.braking, torch.where(brake > 0, -self.brake_dir * brake, -self.brake_dir * 1e-6), duty)
         return torch.where(self.braking, -self.brake_dir * brake, duty)
 
     def output_stage(self, duty: torch.Tensor, dt: float) -> tuple[torch.Tensor, torch.Tensor]:
