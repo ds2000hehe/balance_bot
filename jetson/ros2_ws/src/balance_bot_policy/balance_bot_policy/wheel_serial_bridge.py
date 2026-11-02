@@ -64,6 +64,10 @@ class WheelSerialBridge(Node):
             "kp_scale": knob("kp_scale", 1.0, 10.0, "multiplies speed_kp"),
             "ki_scale": knob("ki_scale", 1.0, 10.0, "multiplies speed_ki"),
         }
+        # firmware brake (ZS-X11H BRAKE inputs): automatic braking when the throttle asks for less speed than the
+        # wheel turns, from brake_min_rad_s on. Sent as "B <0|1> <min>" with the gains
+        self.auto_brake = bool(p("auto_brake", True).value)
+        self.gains["brake_min_rad_s"] = knob("brake_min_rad_s", 3.0, 30.0, "wheel speed above which the firmware brakes")
         self.add_on_set_parameters_callback(self._on_params)
 
         self.send_after = 0.0
@@ -120,13 +124,18 @@ class WheelSerialBridge(Node):
         g = self.gains
         kp, ki = g["speed_kp"] * g["kp_scale"], g["speed_ki"] * g["ki_scale"]
         self._write(f"G {kp:.5f} {ki:.5f}\n")
+        self._write(f"B {int(self.auto_brake)} {g['brake_min_rad_s']:.2f}\n")
         self.get_logger().info(f"speed loop gains -> kp {kp:.4f} ki {ki:.4f} "
-                               f"(scales {g['kp_scale']:.2f} / {g['ki_scale']:.2f})")
+                               f"(scales {g['kp_scale']:.2f} / {g['ki_scale']:.2f}), auto brake "
+                               f"{'on' if self.auto_brake else 'off'} above {g['brake_min_rad_s']:.1f} rad/s")
 
     def _on_params(self, params):
         changed = False
         for prm in params:
-            if prm.name in self.gains:
+            if prm.name == "auto_brake":
+                self.auto_brake = bool(prm.value)
+                changed = True
+            elif prm.name in self.gains:
                 v = float(prm.value)
                 if v < 0.0:
                     return SetParametersResult(successful=False, reason=f"{prm.name} must be >= 0")

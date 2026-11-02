@@ -13,6 +13,11 @@ wheel_serial_bridge:
     speed_ki: 0.2                          # sketch default
     kp_scale: 1.0
     ki_scale: 1.0
+    # firmware brake (ZS-X11H BRAKE on A4 / A5): brakes when the throttle asks for less speed than the wheel turns,
+    # only above brake_min_rad_s (below it the firmware can reverse instead). Live:
+    #   ros2 param set /wheel_serial_bridge auto_brake false
+    auto_brake: true
+    brake_min_rad_s: 3.0
 
 balance_bot_policy:
   ros__parameters:

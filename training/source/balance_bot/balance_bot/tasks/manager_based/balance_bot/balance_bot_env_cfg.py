@@ -410,3 +410,25 @@ class BalanceBotDuty2kgFastEnvCfg(BalanceBotDuty2kgEnvCfg):
         super().__post_init__()
         self.decimation = 2
         self.sim.render_interval = self.decimation
+
+
+@configclass
+class BalanceBotDuty2kgFastSlowFilterEnvCfg(BalanceBotDuty2kgFastEnvCfg):
+    """smooth15 with a 4x slower accelerometer correction in the tilt filter (tau 2 s, robot: gravity_filter_tau 2.0):
+    speeding up / braking reads as a false tilt 4x less; the gyro carries the tilt (bias error ~1 deg)."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.observations.policy.projected_gravity.params["tau"] = 2.0
+
+
+@configclass
+class BalanceBotDuty2kgCoastEnvCfg(BalanceBotDuty2kgEnvCfg):
+    """smooth14 on drivers that do not brake: lowering the throttle lets the wheel coast (robot bags 2026-11-02:
+    after the throttle dropped the wheels kept 4-5 rad/s and the robot fell backwards). Braking only by reversing,
+    which the firmware allows below 3 rad/s. Stops from speed are practised: commands change every 2-5 s."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.wheel_vel.drive.regen_braking = False
+        self.commands.base_velocity.resampling_time_range = (2.0, 5.0)
