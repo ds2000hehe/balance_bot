@@ -7,6 +7,11 @@ Subscribes:
 Publishes:
     wheel_state_topic  std_msgs/Float32MultiArray   measured wheel speeds [left, right] rad/s <- "W <l> <r>"
 
+Live tuning of the firmware's PI speed loop (speed mode only; the raw throttle "D" bypasses it): parameters
+speed_kp / speed_ki (firmware defaults) times kp_scale / ki_scale are sent as "G <kp> <ki>" whenever one changes and
+again whenever the controller (re)starts. Sliders: ``ros2 run rqt_reconfigure rqt_reconfigure``; or
+``ros2 param set /wheel_serial_bridge ki_scale 1.5``.
+
 Lines starting with '#' from the wheel controller are logged. The serial port is reopened if the USB cable is
 unplugged. On shutdown the wheels are told to stop ("S").
 
@@ -19,6 +24,7 @@ import time
 
 import rclpy
 import serial
+from rcl_interfaces.msg import FloatingPointRange, ParameterDescriptor, SetParametersResult
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from std_msgs.msg import Float32MultiArray
@@ -35,9 +41,22 @@ class WheelSerialBridge(Node):
         wheel_duty_topic = p("wheel_duty_topic", "/wheel_duty").value
         self.boot_wait = p("boot_wait", 2.5).value
 
+        def knob(name, default, hi, text):
+            rng = FloatingPointRange(from_value=0.0, to_value=hi, step=0.0)
+            return p(name, default, ParameterDescriptor(description=text, floating_point_range=[rng])).value
+
+        self.gains = {
+            "speed_kp": knob("speed_kp", 0.01, 0.1, "firmware KP [duty per rad/s] (sketch default 0.01)"),
+            "speed_ki": knob("speed_ki", 0.2, 2.0, "firmware KI [duty per rad] (sketch default 0.2)"),
+            "kp_scale": knob("kp_scale", 1.0, 5.0, "multiplies speed_kp"),
+            "ki_scale": knob("ki_scale", 1.0, 5.0, "multiplies speed_ki"),
+        }
+        self.add_on_set_parameters_callback(self._on_params)
+
         self.send_after = 0.0
         self.last_report = 0.0
         self.reporting = False
+        self.gains_pending = True
         self.serial = None
         self.write_lock = threading.Lock()
         self.running = True
@@ -78,6 +97,26 @@ class WheelSerialBridge(Node):
                 pass
         self.serial = None
 
+    def _send_gains(self):
+        g = self.gains
+        kp, ki = g["speed_kp"] * g["kp_scale"], g["speed_ki"] * g["ki_scale"]
+        self._write(f"G {kp:.5f} {ki:.5f}\n")
+        self.get_logger().info(f"speed loop gains -> kp {kp:.4f} ki {ki:.4f} "
+                               f"(scales {g['kp_scale']:.2f} / {g['ki_scale']:.2f})")
+
+    def _on_params(self, params):
+        changed = False
+        for prm in params:
+            if prm.name in self.gains:
+                v = float(prm.value)
+                if v < 0.0:
+                    return SetParametersResult(successful=False, reason=f"{prm.name} must be >= 0")
+                self.gains[prm.name] = v
+                changed = True
+        if changed:
+            self._send_gains()
+        return SetParametersResult(successful=True)
+
     def _on_cmd(self, msg: Float32MultiArray):
         if len(msg.data) != 2:
             self.get_logger().warn(f"wheel command needs 2 values [left, right], got {len(msg.data)}", once=True)
@@ -99,6 +138,7 @@ class WheelSerialBridge(Node):
                         self.send_after = time.monotonic() + self.boot_wait
                     self.last_report = time.monotonic()
                     self.reporting = False
+                    self.gains_pending = True  # the controller starts with the sketch's gains after every reset
                     self.get_logger().info(f"opened {self.port}, waiting {self.boot_wait:.1f} s for the controller to boot")
                 except (serial.SerialException, OSError) as e:
                     self.get_logger().warn(f"cannot open {self.port}: {e}", throttle_duration_sec=5.0)
@@ -131,6 +171,9 @@ class WheelSerialBridge(Node):
                 self.get_logger().info(f"controller: {line[1:].strip()}")
             elif line:
                 self.get_logger().warn(f"unexpected line from the controller: {line[:60]!r}", throttle_duration_sec=5.0)
+            if self.reporting and self.gains_pending and now >= self.send_after:
+                self.gains_pending = False
+                self._send_gains()
             if now - self.last_report > self.boot_wait + 1.0:
                 self.reporting = False
                 self.get_logger().warn(

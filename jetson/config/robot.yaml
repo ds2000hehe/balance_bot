@@ -7,6 +7,12 @@ wheel_serial_bridge:
     wheel_cmd_topic: "/wheel_cmd"          # wheel speed targets [left, right] rad/s -> ESP32
     wheel_state_topic: "/wheel_vel"        # measured wheel speeds [left, right] rad/s <- ESP32
     wheel_duty_topic: "/wheel_duty"        # motor duty [left, right] in [-1, 1] -> ESP32 "D" (policy, wheel_check)
+    # firmware PI speed loop (speed mode only), sent as "G kp ki": gain = speed_* x *_scale. Live:
+    #   ros2 param set /wheel_serial_bridge ki_scale 1.5      (write 1.0, 2.0: decimals, not 1, 2)
+    speed_kp: 0.01                         # sketch default
+    speed_ki: 0.2                          # sketch default
+    kp_scale: 1.0
+    ki_scale: 1.0
 
 balance_bot_policy:
   ros__parameters:
