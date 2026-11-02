@@ -18,6 +18,8 @@ wheel_serial_bridge:
     #   ros2 param set /wheel_serial_bridge auto_brake false
     auto_brake: true
     brake_min_rad_s: 3.0
+    brake_gain_left: 1.0                   # from motor_test.py brakecal (makes both wheels brake the same)
+    brake_gain_right: 1.0
 
 balance_bot_policy:
   ros__parameters:

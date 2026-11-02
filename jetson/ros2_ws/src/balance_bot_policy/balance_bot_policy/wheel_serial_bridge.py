@@ -68,6 +68,9 @@ class WheelSerialBridge(Node):
         # wheel turns, from brake_min_rad_s on. Sent as "B <0|1> <min>" with the gains
         self.auto_brake = bool(p("auto_brake", True).value)
         self.gains["brake_min_rad_s"] = knob("brake_min_rad_s", 3.0, 30.0, "wheel speed above which the firmware brakes")
+        # per-wheel brake gains (0-1) from motor_test.py brakecal: the stronger brake scaled down to match ("J l r")
+        self.gains["brake_gain_left"] = knob("brake_gain_left", 1.0, 1.0, "left wheel automatic braking x this")
+        self.gains["brake_gain_right"] = knob("brake_gain_right", 1.0, 1.0, "right wheel automatic braking x this")
         self.add_on_set_parameters_callback(self._on_params)
 
         self.send_after = 0.0
@@ -125,9 +128,11 @@ class WheelSerialBridge(Node):
         kp, ki = g["speed_kp"] * g["kp_scale"], g["speed_ki"] * g["ki_scale"]
         self._write(f"G {kp:.5f} {ki:.5f}\n")
         self._write(f"B {int(self.auto_brake)} {g['brake_min_rad_s']:.2f}\n")
+        self._write(f"J {min(g['brake_gain_left'], 1.0):.3f} {min(g['brake_gain_right'], 1.0):.3f}\n")
         self.get_logger().info(f"speed loop gains -> kp {kp:.4f} ki {ki:.4f} "
                                f"(scales {g['kp_scale']:.2f} / {g['ki_scale']:.2f}), auto brake "
-                               f"{'on' if self.auto_brake else 'off'} above {g['brake_min_rad_s']:.1f} rad/s")
+                               f"{'on' if self.auto_brake else 'off'} above {g['brake_min_rad_s']:.1f} rad/s, "
+                               f"gains {g['brake_gain_left']:.2f} / {g['brake_gain_right']:.2f}")
 
     def _on_params(self, params):
         changed = False
