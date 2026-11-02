@@ -25,6 +25,7 @@ import time
 import rclpy
 import serial
 from rcl_interfaces.msg import FloatingPointRange, ParameterDescriptor, SetParametersResult
+from rclpy.exceptions import InvalidParameterTypeException, InvalidParameterValueException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from std_msgs.msg import Float32MultiArray
@@ -42,14 +43,24 @@ class WheelSerialBridge(Node):
         self.boot_wait = p("boot_wait", 2.5).value
 
         def knob(name, default, hi, text):
+            """Slider range 0..hi (rqt_reconfigure). A configured value outside it is used anyway (no slider then),
+            never a reason to not start: the bridge is what keeps the wheels stoppable."""
             rng = FloatingPointRange(from_value=0.0, to_value=hi, step=0.0)
-            return p(name, default, ParameterDescriptor(description=text, floating_point_range=[rng])).value
+            try:
+                return float(p(name, default, ParameterDescriptor(description=text, floating_point_range=[rng])).value)
+            except (InvalidParameterValueException, InvalidParameterTypeException) as e:
+                self.get_logger().warn(f"{name}: {e}; using it without a slider range")
+            try:
+                return float(p(name, default, ParameterDescriptor(description=text, dynamic_typing=True)).value)
+            except Exception as e:  # noqa: BLE001
+                self.get_logger().error(f"{name}: {e}; using the default {default}")
+                return default
 
         self.gains = {
-            "speed_kp": knob("speed_kp", 0.01, 0.1, "firmware KP [duty per rad/s] (sketch default 0.01)"),
-            "speed_ki": knob("speed_ki", 0.2, 2.0, "firmware KI [duty per rad] (sketch default 0.2)"),
-            "kp_scale": knob("kp_scale", 1.0, 5.0, "multiplies speed_kp"),
-            "ki_scale": knob("ki_scale", 1.0, 5.0, "multiplies speed_ki"),
+            "speed_kp": knob("speed_kp", 0.01, 1.0, "firmware KP [duty per rad/s] (sketch default 0.01)"),
+            "speed_ki": knob("speed_ki", 0.2, 5.0, "firmware KI [duty per rad] (sketch default 0.2)"),
+            "kp_scale": knob("kp_scale", 1.0, 10.0, "multiplies speed_kp"),
+            "ki_scale": knob("ki_scale", 1.0, 10.0, "multiplies speed_ki"),
         }
         self.add_on_set_parameters_callback(self._on_params)
 
