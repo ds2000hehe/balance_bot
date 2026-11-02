@@ -479,3 +479,16 @@ class BalanceBotDuty2kgRevBrakeEnvCfg(BalanceBotDuty2kgReverseEnvCfg):
         self.actions.wheel_vel.drive.reverse_brake_margin = 5.0
         self.actions.wheel_vel.drive.reverse_brake_gain = 0.5
         self.actions.wheel_vel.drive.reverse_brake_max = 0.08
+
+
+@configclass
+class BalanceBotDuty2kgRevBrakeSmoothEnvCfg(BalanceBotDuty2kgRevBrakeEnvCfg):
+    """smooth21's setup, smoother and faster: stronger penalties on throttle jumps and wheel acceleration (braking by
+    reversal is all-or-nothing on the real drivers, so fewer, smaller brake events), stronger speed tracking (smooth21
+    reached ~60 % of the forward speed command). Commands up to 1.5 m/s (base range)."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.rewards.action_rate.weight = -1.0
+        self.rewards.wheel_acc.weight = -4.0e-6
+        self.rewards.track_lin_vel.weight = 3.0
