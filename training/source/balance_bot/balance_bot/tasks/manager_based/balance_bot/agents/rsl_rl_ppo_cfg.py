@@ -49,3 +49,13 @@ class BalanceBotStandUpPPORunnerCfg(BalanceBotPPORunnerCfg):
         self.experiment_name = "balance_bot_standup"
         # getting up takes ~1-2 s, so look further ahead
         self.algorithm.gamma = 0.995
+
+
+@configclass
+class BalanceBotFastPPORunnerCfg(BalanceBotPPORunnerCfg):
+    """For 100 Hz policies: same look-ahead time and seconds of experience per iteration as at 50 Hz."""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.num_steps_per_env = 48
+        self.algorithm.gamma = 0.995

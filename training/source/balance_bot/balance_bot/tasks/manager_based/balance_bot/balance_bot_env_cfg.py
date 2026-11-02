@@ -385,3 +385,28 @@ class BalanceBotRealMassEnvCfg_PLAY(BalanceBotRealMassEnvCfg):
         self.scene.env_spacing = 1.5
         self.observations.policy.enable_corruption = False
         self.events.push_robot = None
+
+
+@configclass
+class BalanceBotDuty2kgEnvCfg(BalanceBotEnvCfg):
+    """smooth4_duty (smooth3's setup with raw throttle output, action scale 30) with the real 2 kg body, trained for
+    the measured control delay: 15-50 ms (the robot: ~45 ms from a throttle command to the gyro seeing it)."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.actions.wheel_vel.control = "duty"
+        self.actions.wheel_vel.delay_range = (3, 10)
+        # the model's two body parts are 3 kg each: set each to 0.7-1.4 kg (body 1.4-2.8 kg, real 2 kg)
+        self.events.add_body_mass.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["body", "mate_connector_1"])
+        self.events.add_body_mass.params["mass_distribution_params"] = (0.7, 1.4)
+        self.events.add_body_mass.params["operation"] = "abs"
+
+
+@configclass
+class BalanceBotDuty2kgFastEnvCfg(BalanceBotDuty2kgEnvCfg):
+    """Same at 100 Hz (decimation 2): reacts to a new IMU sample 10 ms sooner on average (robot: control_rate 100)."""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.decimation = 2
+        self.sim.render_interval = self.decimation
